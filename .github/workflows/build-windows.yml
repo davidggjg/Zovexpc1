@@ -1,0 +1,82 @@
+name: Build Windows installer
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Publish a GitHub Release with the installer'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate icons
+        run: npm run icons
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build renderer and main process
+        run: |
+          npm run build:renderer
+          npm run build:electron
+
+      - name: Package Windows installer
+        run: npx electron-builder --win --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read version
+        id: meta
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZOVEX-Setup-${{ steps.meta.outputs.version }}
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish release
+        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-v${{ steps.meta.outputs.version }}-${{ github.run_number }}
+          name: ZOVEX Desktop ${{ steps.meta.outputs.version }}
+          body: |
+            אפליקציית ZOVEX למחשב Windows.
+
+            **להתקנה:** הורד את `ZOVEX-Setup-${{ steps.meta.outputs.version }}.exe`, הרץ אותו ובחר תיקיית התקנה.
+            ההתקנה יוצרת קיצור דרך בשולחן העבודה ובתפריט Start.
+
+            נבנה מהענף `${{ github.ref_name }}` · commit `${{ github.sha }}`
+          files: release/*.exe
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
