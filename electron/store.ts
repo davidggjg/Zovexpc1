@@ -35,13 +35,22 @@ function writeJson(file: string, value: unknown): void {
 }
 
 /**
- * Google OAuth client, injected at build time from repository secrets so the
- * published installer works out of the box without the values living in a
- * public repository. When they are absent the app still runs; sign-in then
- * asks for them in Settings.
+ * Google OAuth client for this desktop app.
+ *
+ * Shipped with the app by the owner's decision, which matches Google's own
+ * position on installed-app clients: the secret identifies the application on
+ * the consent screen and nothing more. It grants no access to the owner's
+ * Google account, to the Cloud project or to any user's data, and the only
+ * scopes requested are name, e-mail and picture. Every user still has to
+ * approve the sign-in themselves.
+ *
+ * A build environment may override both, and so may the user from Settings.
+ * The values can be revoked at any time in Google Cloud Console.
  */
-const BUILD_GOOGLE_CLIENT_ID = process.env.ZOVEX_GOOGLE_CLIENT_ID ?? '';
-const BUILD_GOOGLE_CLIENT_SECRET = process.env.ZOVEX_GOOGLE_CLIENT_SECRET ?? '';
+const BUILD_GOOGLE_CLIENT_ID = process.env.ZOVEX_GOOGLE_CLIENT_ID
+  || '1095467813314-0gc3vhft8c8coip08d7e2fkt4vma1gsn.apps.googleusercontent.com';
+const BUILD_GOOGLE_CLIENT_SECRET = process.env.ZOVEX_GOOGLE_CLIENT_SECRET
+  || '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';
 
 export const DEFAULT_SETTINGS: Settings = {
   serverUrl: 'https://zovex.duckdns.org',
