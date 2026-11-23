@@ -10,7 +10,7 @@ import type {
   AppVersionInfo, CatalogPayload, EpgProgram, FavoriteEntry, FetchResult, HistoryEntry, MediaItem,
 } from '../shared/types';
 import { currentUserId, getSettings, patchSettings, readCatalogCache, writeCatalogCache } from './store';
-import { clearSession, ensureSession, needsSignature, setBlocked, signRequest } from './zvauth';
+import { clearSession, ensureSession, needsSignature, setBlocked, signRequest, syncClock } from './zvauth';
 
 const USER_AGENT = 'ZovexDesktop';
 
@@ -32,8 +32,8 @@ interface RequestOptions {
   headers?: Record<string, string>;
   withUser?: boolean;
   signal?: AbortSignal;
-  /** Internal: set while retrying a request that the server asked us to reauth. */
-  reauthed?: boolean;
+  /** Internal: how many reauth retries this request has already made. */
+  reauthed?: number;
 }
 
 export class BlockedError extends Error {}
@@ -83,13 +83,18 @@ async function request(path: string, opts: RequestOptions = {}): Promise<Respons
           setBlocked(detail.detail ?? 'הגישה מהאפליקציה נחסמה');
           throw new BlockedError(detail.detail ?? 'הגישה מהאפליקציה נחסמה');
         }
-        if (res.status === 401 && detail.zv === 'reauth' && !opts.reauthed) {
+        if (res.status === 401 && detail.zv === 'reauth' && (opts.reauthed ?? 0) < 2) {
+          // Second refusal in a row usually means our timestamp is outside the
+          // window the server accepts, so re-read its clock before trying
+          // again; the first retry just renews the session.
+          const round = (opts.reauthed ?? 0) + 1;
+          syncClock(res.headers);
           clearSession();
           const session = await ensureSession(base(), true);
           if (session) {
             clearTimeout(timer);
             opts.signal?.removeEventListener('abort', onAbort);
-            return request(path, { ...opts, reauthed: true, retries: 0 });
+            return request(path, { ...opts, reauthed: round, retries: 0 });
           }
         }
         return res;

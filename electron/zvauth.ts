@@ -15,6 +15,14 @@ import { app, safeStorage } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import type { AuthStatus } from '../shared/types';
+
+/** A handshake that the server itself rejected, with its own wording. */
+export class HandshakeError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
 
 /**
  * The application secret for the "PC" client, as issued in the ZOVEX admin
@@ -110,6 +118,30 @@ interface Session {
 let session: Session | null = null;
 let handshakeInFlight: Promise<Session | null> | null = null;
 let blockedReason: string | null = null;
+let lastError: { status: number; detail: string; at: number } | null = null;
+
+/**
+ * Difference between the server's clock and ours.
+ *
+ * A signature carries a timestamp and the server rejects anything more than
+ * two minutes out. A desktop with a drifting or wrongly-zoned clock would
+ * therefore fail every request, so timestamps are stamped in the server's
+ * time, not the machine's.
+ */
+let clockOffsetMs = 0;
+
+/** Reads the HTTP Date header and records how far our clock is from it. */
+export function syncClock(headers: Headers): void {
+  const date = headers.get('date');
+  if (!date) return;
+  const serverNow = Date.parse(date);
+  if (!Number.isFinite(serverNow)) return;
+  clockOffsetMs = serverNow - Date.now();
+}
+
+export function clockOffset(): number {
+  return clockOffsetMs;
+}
 
 function loadSession(): Session | null {
   if (session) return session;
@@ -143,7 +175,10 @@ function normaliseExp(exp: unknown): number {
 }
 
 async function handshake(origin: string): Promise<Session | null> {
-  if (!hasAppSecret()) return null;
+  if (!hasAppSecret()) {
+    lastError = { status: 0, detail: 'הגרסה הזו נבנתה בלי סוד יישום', at: Date.now() };
+    return null;
+  }
   const pub = devicePublicKey();
   const proof = crypto.createHmac('sha256', appSecret()).update(pub).digest('hex');
 
@@ -153,17 +188,23 @@ async function handshake(origin: string): Promise<Session | null> {
     body: JSON.stringify({ pub, plat: 'pc', app_proof: proof }),
   });
 
+  syncClock(res.headers);
+
   if (res.status === 403) {
     const body = (await res.json().catch(() => ({}))) as { detail?: string; zv?: string };
     // Only a declared block is permanent. A plain 403 means the proof was
     // rejected — worth retrying later rather than disabling the client.
     if (body.zv === 'blocked') {
       blockedReason = body.detail ?? 'הגישה נחסמה על ידי השרת';
+      lastError = { status: 403, detail: blockedReason, at: Date.now() };
       return null;
     }
-    throw new Error(body.detail ?? 'האפליקציה לא אומתה מול השרת');
+    throw new HandshakeError(403, body.detail ?? 'האפליקציה לא אומתה מול השרת (סוד יישום שגוי?)');
   }
-  if (!res.ok) throw new Error(`handshake failed (${res.status})`);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { detail?: string };
+    throw new HandshakeError(res.status, body.detail ?? `לחיצת היד נכשלה (${res.status})`);
+  }
 
   const body = (await res.json()) as { sid?: string; spub?: string; exp?: number };
   if (!body.sid || !body.spub) throw new Error('handshake response incomplete');
@@ -189,7 +230,21 @@ export async function ensureSession(origin: string, force = false): Promise<Sess
   // One handshake at a time: a burst of requests must not open many sessions.
   if (!handshakeInFlight) {
     handshakeInFlight = handshake(origin)
-      .catch(() => null)
+      .then((result) => {
+        if (result) lastError = null;
+        else if (!blockedReason) lastError = { status: 0, detail: 'לא התקבל סשן מהשרת', at: Date.now() };
+        return result;
+      })
+      .catch((err: Error | HandshakeError) => {
+        // A silent failure here looks exactly like "the server has no data",
+        // so the reason is kept and shown in Settings.
+        lastError = {
+          status: err instanceof HandshakeError ? err.status : 0,
+          detail: err instanceof Error ? err.message : 'שגיאת רשת בלחיצת היד',
+          at: Date.now(),
+        };
+        return null;
+      })
       .finally(() => { handshakeInFlight = null; });
   }
   return handshakeInFlight;
@@ -224,18 +279,11 @@ export interface SignedHeaders {
  * the nonce makes it single-use.
  */
 export function signRequest(sess: Session, method: string, pathWithQuery: string): SignedHeaders {
-  const ts = String(Date.now());
+  const ts = String(Date.now() + clockOffsetMs);
   const nonce = b64url(crypto.randomBytes(12));
   const msg = `${method.toUpperCase()}\n${pathWithQuery}\n${ts}\n${nonce}`;
   const sig = b64url(crypto.createHmac('sha256', sess.key).update(msg).digest());
   return { 'X-ZV-S': sess.sid, 'X-ZV-T': ts, 'X-ZV-N': nonce, 'X-ZV-Sig': sig };
-}
-
-export interface AuthStatus {
-  configured: boolean;
-  active: boolean;
-  expiresAt: number | null;
-  blocked: string | null;
 }
 
 export function authStatus(): AuthStatus {
@@ -245,7 +293,14 @@ export function authStatus(): AuthStatus {
     active: Boolean(current && current.exp > Date.now()),
     expiresAt: current?.exp ?? null,
     blocked: blockedReason,
+    lastError: lastError?.detail ?? null,
+    lastErrorStatus: lastError?.status ?? null,
+    clockOffsetMs,
   };
+}
+
+export function clearLastError(): void {
+  lastError = null;
 }
 
 export function setBlocked(reason: string | null): void {

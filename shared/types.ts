@@ -60,6 +60,11 @@ export interface AuthStatus {
   expiresAt: number | null;
   /** Set when the server refused this client outright. */
   blocked: string | null;
+  /** Why the last handshake failed, verbatim from the server where possible. */
+  lastError: string | null;
+  lastErrorStatus: number | null;
+  /** How far the machine's clock is from the server's, in milliseconds. */
+  clockOffsetMs: number;
 }
 
 export interface AppVersionInfo {

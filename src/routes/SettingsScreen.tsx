@@ -10,6 +10,7 @@ import { Button, Select, Slider, Switch, TextInput } from '@/components/ui/primi
 import { ConfirmDialog } from '@/components/ui/feedback';
 import { PageHeader } from './parts';
 import { useSignIn } from '@/components/shell/SignInGate';
+import { useLibrary } from '@/store/library';
 import { formatBytes, initials, timeAgo } from '@/lib/format';
 import './settings.css';
 
@@ -332,22 +333,27 @@ export default function SettingsScreen() {
           </Row>
         </Group>
 
-        {/* ── Application authentication ──────────────────────────── */}
-        <Group icon={<ShieldCheck size={18} />} title="אימות אפליקציה" desc="השרת מקבל בקשות רק מאפליקציה מאומתת (zv-auth v1)">
+        {/* ── Server connection ───────────────────────────────────── */}
+        <Group icon={<ShieldCheck size={18} />} title="חיבור לשרת" desc="השרת מקבל בקשות רק מאפליקציה מאומתת (zv-auth v1)">
           <Row
             label={
               appAuth === null ? 'בודק…'
-                : appAuth.blocked ? 'הגישה נחסמה על ידי השרת'
-                : appAuth.active ? 'מחובר לשרת'
-                : appAuth.configured ? 'לא מחובר כרגע'
-                : 'האפליקציה לא הוגדרה עם סוד יישום'
+                : !appAuth.configured ? 'אין סוד בבנייה'
+                : appAuth.blocked ? 'הגישה נחסמה'
+                : appAuth.active ? 'מאומת'
+                : 'לא מאומת'
             }
             hint={
-              appAuth?.blocked
-                ? appAuth.blocked
-                : appAuth?.expiresAt
-                  ? `הסשן בתוקף עד ${new Date(appAuth.expiresAt).toLocaleString('he-IL')}`
-                  : 'הסשן מתחדש אוטומטית כל 24 שעות.'
+              appAuth === null ? undefined
+                : !appAuth.configured
+                  ? 'הגרסה הזו נבנתה בלי סוד יישום, ולכן אי אפשר להתחבר לשרת. נדרשת בנייה עם ZOVEX_APP_SECRET.'
+                  : appAuth.blocked
+                    ? appAuth.blocked
+                    : appAuth.lastError
+                      ? `${appAuth.lastError}${appAuth.lastErrorStatus ? ` (${appAuth.lastErrorStatus})` : ''}`
+                      : appAuth.expiresAt
+                        ? `הסשן בתוקף עד ${new Date(appAuth.expiresAt).toLocaleString('he-IL')}`
+                        : 'הסשן מתחדש אוטומטית.'
             }
           >
             <Button
@@ -357,18 +363,28 @@ export default function SettingsScreen() {
               onClick={async () => {
                 setReauthing(true);
                 const ok = await window.zovex.auth.reauthenticate();
-                setAppAuth(await window.zovex.auth.appStatus());
+                const next = await window.zovex.auth.appStatus();
+                setAppAuth(next);
                 setReauthing(false);
                 toast({
                   title: ok ? 'האפליקציה אומתה מול השרת' : 'האימות נכשל',
+                  description: ok ? undefined : next.lastError ?? undefined,
                   tone: ok ? 'success' : 'danger',
+                  duration: ok ? 4000 : 9000,
                 });
-                if (ok) await refresh(true);
+                if (ok) { await refresh(true); await useLibrary.getState().syncFromServer(); }
               }}
             >
               התחבר מחדש
             </Button>
           </Row>
+
+          {appAuth && Math.abs(appAuth.clockOffsetMs) > 30000 && (
+            <Row
+              label="שעון המחשב אינו מסונכרן"
+              hint={`הפרש של ${Math.round(appAuth.clockOffsetMs / 1000)} שניות מול השרת. האפליקציה מפצה על כך אוטומטית, אבל כדאי לתקן את שעון Windows.`}
+            />
+          )}
         </Group>
 
         {/* ── Application ─────────────────────────────────────────── */}
