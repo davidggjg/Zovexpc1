@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ExternalLink, LifeBuoy, Send } from 'lucide-react';
 import { useApp } from '@/store/app';
-import { Button, Segmented, TextArea, TextInput } from '@/components/ui/primitives';
+import { Button, Segmented, TextArea } from '@/components/ui/primitives';
 import { EmptyState } from '@/components/ui/feedback';
 import { PageHeader } from './parts';
+import { SignInGate, useSignIn } from '@/components/shell/SignInGate';
 import './settings.css';
 
 type Kind = 'support' | 'bug' | 'suggestion';
@@ -19,16 +20,16 @@ export default function SupportScreen() {
   const userId = useApp((s) => s.userId);
   const toast = useApp((s) => s.toast);
 
+  const { signedIn } = useSignIn();
   const [kind, setKind] = useState<Kind>('support');
-  const [name, setName] = useState(auth.profile?.name ?? '');
-  const [email, setEmail] = useState(auth.profile?.email ?? '');
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [messages, setMessages] = useState<unknown[] | null>(null);
 
   useEffect(() => {
+    if (!signedIn) { setMessages([]); return; }
     void window.zovex.server.myFeedback().then((r) => setMessages(r.messages)).catch(() => setMessages([]));
-  }, []);
+  }, [signedIn]);
 
   const send = async () => {
     if (text.trim().length < 5) {
@@ -36,7 +37,12 @@ export default function SupportScreen() {
       return;
     }
     setSending(true);
-    const ok = await window.zovex.server.sendFeedback({ name: name.trim(), email: email.trim(), text: text.trim(), kind });
+    const ok = await window.zovex.server.sendFeedback({
+      name: auth.profile?.name ?? '',
+      email: auth.profile?.email ?? '',
+      text: text.trim(),
+      kind,
+    });
     setSending(false);
     if (ok) {
       setText('');
@@ -46,6 +52,18 @@ export default function SupportScreen() {
       toast({ title: 'השליחה נכשלה', description: 'לא הצלחנו להגיע לשרת. נסה שוב בעוד רגע.', tone: 'danger' });
     }
   };
+
+  if (!signedIn) {
+    return (
+      <div className="page page-enter">
+        <PageHeader title="תמיכה" />
+        <SignInGate
+          title="התחבר כדי לפנות לתמיכה"
+          text="פנייה נשלחת מחשבון מזוהה, כדי שנדע למי לחזור וכדי שלא יהיה אפשר להציף את התיבה בהודעות אנונימיות."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="page page-enter">
@@ -57,7 +75,7 @@ export default function SupportScreen() {
             <span className="sgroup__icon"><LifeBuoy size={18} /></span>
             <div>
               <div className="sgroup__title">שלח הודעה</div>
-              <div className="sgroup__desc">ההודעה נשלחת עם מזהה המשתמש שלך כדי שנוכל לאתר את הבעיה</div>
+              <div className="sgroup__desc">ההודעה נשלחת מהחשבון שלך כדי שנוכל לחזור אליך ולאתר את הבעיה</div>
             </div>
           </header>
 
@@ -65,10 +83,10 @@ export default function SupportScreen() {
             <Segmented options={KINDS} value={kind} onChange={setKind} ariaLabel="סוג הפנייה" />
           </div>
 
-          <div className="srow srow--stack">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-4)' }}>
-              <TextInput label="שם" value={name} onChange={(e) => setName(e.target.value)} placeholder="איך לפנות אליך" />
-              <TextInput label="אימייל לחזרה" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="לא חובה" dir="ltr" />
+          <div className="srow">
+            <div className="srow__text">
+              <div className="srow__label">נשלח מהחשבון {auth.profile?.name || auth.profile?.email}</div>
+              <div className="srow__hint">נחזור אליך לכתובת {auth.profile?.email}</div>
             </div>
           </div>
 

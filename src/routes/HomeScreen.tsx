@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, Info, Play, Radio, RefreshCw } from 'lucide-react';
+import { Heart, Info, LogIn, Play, Radio, RefreshCw } from 'lucide-react';
 import type { MediaItem } from '@shared/types';
 import { useCatalog } from '@/lib/CatalogProvider';
 import { useApp } from '@/store/app';
 import { useLibrary, isFinished } from '@/store/library';
+import { useSignIn } from '@/components/shell/SignInGate';
 import { MediaRow, RowItem } from '@/components/media/MediaRow';
 import { PosterCard } from '@/components/media/PosterCard';
 import { Button, Badge, Skeleton } from '@/components/ui/primitives';
@@ -23,6 +24,7 @@ export default function HomeScreen() {
   const navigate = useNavigate();
   const { model, status, error, refresh, refreshing } = useCatalog();
   const auth = useApp((s) => s.auth);
+  const { signIn, busy: signingIn } = useSignIn();
   const progress = useLibrary((s) => s.progress);
   const favorites = useLibrary((s) => s.favorites);
   const toggleFavorite = useLibrary((s) => s.toggleFavorite);
@@ -31,13 +33,14 @@ export default function HomeScreen() {
   const origin = serverOrigin();
 
   const continueItems = useMemo(() => {
+    if (!auth.profile) return [];
     return Object.entries(progress)
       .filter(([, rec]) => rec.position > 30 && !isFinished(rec))
       .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
       .map(([id, rec]) => ({ item: model.byId.get(id), rec }))
       .filter((x): x is { item: MediaItem; rec: typeof x.rec } => Boolean(x.item))
       .slice(0, 20);
-  }, [progress, model.byId]);
+  }, [progress, model.byId, auth.profile]);
 
   const favoriteItems = useMemo(
     () => favorites.map((id) => model.byId.get(id)).filter((x): x is MediaItem => Boolean(x)).slice(0, 20),
@@ -103,18 +106,25 @@ export default function HomeScreen() {
                 {favorites.includes(hero.id) ? 'במועדפים' : 'הוסף למועדפים'}
               </Button>
             </div>
-            {!auth.profile && (
-              <p className="hero__hint">
-                אתה צופה ללא חשבון. התחברות שומרת את ההמשך צפייה גם במחשבים אחרים —{' '}
-                <button type="button" className="linkish" onClick={() => navigate('/settings')}>הגדרות חשבון</button>
-              </p>
-            )}
           </div>
         </section>
       ) : null}
 
       {/* ── Rows ─────────────────────────────────────────────────────── */}
       <div className="home__rows">
+        {!auth.profile && (
+          <div className="banner" style={{ marginBottom: 'var(--s-2)' }}>
+            <span className="banner__icon"><LogIn size={17} /></span>
+            <span className="banner__text">
+              <strong>התחבר כדי לשמור איפה עצרת.</strong>{' '}
+              ההמשך צפייה וההיסטוריה נשמרים בשרת לפי החשבון, וזמינים בכל מחשב שתתחבר בו.
+            </span>
+            <Button size="sm" variant="primary" onClick={() => void signIn()} loading={signingIn}>
+              התחבר עם Google
+            </Button>
+          </div>
+        )}
+
         {continueItems.length > 0 && (
           <MediaRow title="המשך צפייה" count={continueItems.length} moreTo="/continue">
             {continueItems.map(({ item, rec }) => (

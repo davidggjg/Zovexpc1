@@ -8,6 +8,7 @@ import { useCatalog } from '@/lib/CatalogProvider';
 import { Button, Select, Slider, Switch, TextInput } from '@/components/ui/primitives';
 import { ConfirmDialog } from '@/components/ui/feedback';
 import { PageHeader } from './parts';
+import { useSignIn } from '@/components/shell/SignInGate';
 import { formatBytes, initials, timeAgo } from '@/lib/format';
 import './settings.css';
 
@@ -35,9 +36,11 @@ function Group({ icon, title, desc, children }: { icon: React.ReactNode; title: 
   );
 }
 
-function Row({ label, hint, children, stack }: { label: string; hint?: string; children?: React.ReactNode; stack?: boolean }) {
+function Row({ label, hint, children, stack, id }: {
+  label: string; hint?: string; children?: React.ReactNode; stack?: boolean; id?: string;
+}) {
   return (
-    <div className={stack ? 'srow srow--stack' : 'srow'}>
+    <div className={stack ? 'srow srow--stack' : 'srow'} id={id}>
       <div className="srow__text">
         <div className="srow__label">{label}</div>
         {hint && <div className="srow__hint">{hint}</div>}
@@ -63,7 +66,7 @@ export default function SettingsScreen() {
   const [serverDraft, setServerDraft] = useState('');
   const [clientDraft, setClientDraft] = useState('');
   const [secretDraft, setSecretDraft] = useState('');
-  const [signingIn, setSigningIn] = useState(false);
+  const { signIn: doSignIn, busy: signingIn } = useSignIn();
   const [pinging, setPinging] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
 
@@ -92,15 +95,19 @@ export default function SettingsScreen() {
   const patch = (p: Partial<Settings>) => void setSettings(p);
 
   const signIn = async () => {
-    setSigningIn(true);
-    const result = await window.zovex.auth.signIn();
-    setSigningIn(false);
-    if (result.ok && result.profile) {
-      await refreshIdentity();
-      toast({ title: `שלום ${result.profile.name || result.profile.email}`, description: 'ההתחברות הושלמה.', tone: 'success' });
-    } else {
-      toast({ title: 'ההתחברות נכשלה', description: result.error, tone: 'danger', duration: 7000 });
+    // Missing credentials are a setup step, not a dead button: say exactly
+    // what is needed and take the user to the field.
+    if (!settings.googleClientId.trim() || !settings.googleClientSecret.trim()) {
+      toast({
+        title: 'צריך להשלים את פרטי Google פעם אחת',
+        description: 'מלא Client ID ו-Client Secret בקטע "שרת" ואז התחבר.',
+        tone: 'warning',
+        duration: 8000,
+      });
+      document.getElementById('google-setup')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
     }
+    await doSignIn();
   };
 
   const signOut = async () => {
@@ -138,25 +145,13 @@ export default function SettingsScreen() {
               <div className="account-card__name">{auth.profile?.name || 'צפייה ללא חשבון'}</div>
               <div className="account-card__mail">
                 {auth.profile?.email
-                  ?? (settings.googleClientSecret.trim()
-                    ? 'כל התכונות עובדות גם בלי התחברות — הנתונים נשמרים במחשב הזה בלבד'
-                    : 'כדי להתחבר, מלא Google Client Secret בקטע "שרת" למטה')}
+                  ?? 'הכול עובד גם בלי חשבון. התחברות רק מעבירה את ההיסטוריה בין מחשבים.'}
               </div>
             </div>
             {auth.profile ? (
               <Button variant="secondary" icon={<LogOut size={15} />} onClick={() => void signOut()}>התנתק</Button>
             ) : (
-              <Button
-                variant="primary"
-                onClick={() => void signIn()}
-                loading={signingIn}
-                disabled={!settings.googleClientId.trim() || !settings.googleClientSecret.trim()}
-                title={
-                  !settings.googleClientSecret.trim()
-                    ? 'חסר Google Client Secret — מלא אותו בקטע "שרת" למטה'
-                    : undefined
-                }
-              >
+              <Button variant="primary" onClick={() => void signIn()} loading={signingIn}>
                 התחבר עם Google
               </Button>
             )}
@@ -168,21 +163,18 @@ export default function SettingsScreen() {
             </Row>
           )}
 
-          {auth.profile && (
-            <Row
-              label="סנכרן היסטוריה לפי חשבון Google"
-              hint="מופעל: ההמשך צפייה מזוהה לפי החשבון ועובר בין מחשבים. כבוי: מזוהה לפי המחשב הזה בלבד."
-            >
-              <Switch
-                label="סנכרון לפי חשבון"
-                checked={settings.accountId !== null}
-                onChange={(on) => patch({ accountId: on && auth.profile ? `g_${auth.profile.sub}` : null })}
-              />
-            </Row>
-          )}
-
-          <Row label="שמור היסטוריה בשרת" hint="שולח לשרת מה נצפה והיכן נעצרת, בדיוק כמו באפליקציית האנדרואיד.">
-            <Switch label="שמירת היסטוריה" checked={settings.syncHistory} onChange={(v) => patch({ syncHistory: v })} />
+          <Row
+            label="שמור היסטוריה בשרת"
+            hint={auth.profile
+              ? 'שולח לשרת מה נצפה והיכן נעצרת, לפי החשבון שלך.'
+              : 'פעיל רק אחרי התחברות — בלי חשבון אין למה לקשר את הנתונים.'}
+          >
+            <Switch
+              label="שמירת היסטוריה"
+              checked={settings.syncHistory && Boolean(auth.profile)}
+              disabled={!auth.profile}
+              onChange={(v) => patch({ syncHistory: v })}
+            />
           </Row>
 
           <Row label="מזהה המשתמש הנוכחי" hint="זה המזהה שנשלח לשרת בכותרת x-user-id." stack>
@@ -293,8 +285,9 @@ export default function SettingsScreen() {
           </Row>
 
           <Row
+            id="google-setup"
             label="Google Client ID"
-            hint="מזהה ציבורי של לקוח Desktop ב-Google Cloud. נדרש רק להתחברות עם Google."
+            hint="מזהה לקוח Desktop מ-Google Cloud Console. נדרש רק להתחברות עם Google."
             stack
           >
             <div style={{ display: 'flex', gap: 'var(--s-3)' }}>

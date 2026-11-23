@@ -26,6 +26,7 @@ export default function WatchScreen() {
   const navigate = useNavigate();
   const { model } = useCatalog();
   const settings = useApp((s) => s.settings);
+  const signedIn = useApp((s) => Boolean(s.auth.profile));
   const progressMap = useLibrary((s) => s.progress);
   const recordProgress = useLibrary((s) => s.recordProgress);
 
@@ -126,7 +127,7 @@ export default function WatchScreen() {
 
   /* ── Resume position ─────────────────────────────────────────────────── */
   useEffect(() => {
-    if (!ready || isLive || params.get('restart') === '1' || !settings?.resumePlayback) return;
+    if (!ready || isLive || params.get('restart') === '1' || !settings?.resumePlayback || !signedIn) return;
     const video = videoRef.current;
     if (!video) return;
     let cancelled = false;
@@ -152,7 +153,7 @@ export default function WatchScreen() {
 
   /* ── Persist progress ────────────────────────────────────────────────── */
   const persist = useCallback((position: number, total: number, force = false) => {
-    if (isLive || !item || total <= 0 || position <= 0) return;
+    if (isLive || !item || total <= 0 || position <= 0 || !signedIn) return;
     const now = Date.now();
     if (!force && now - lastSave.current < SAVE_EVERY_MS) return;
     lastSave.current = now;
@@ -161,12 +162,12 @@ export default function WatchScreen() {
       title: item.title, thumb: item.thumbnail_url,
     });
     void window.zovex.playback.saveProgress(item.id, position, total);
-  }, [isLive, item, recordProgress]);
+  }, [isLive, item, recordProgress, signedIn]);
 
   useEffect(() => {
-    if (!item || isLive) return;
+    if (!item || isLive || !signedIn) return;
     void window.zovex.playback.saveHistory(item.id, item.title, item.thumbnail_url ?? '');
-  }, [item, isLive]);
+  }, [item, isLive, signedIn]);
 
   // Leaving the screen must not lose the last few seconds.
   useEffect(() => () => {

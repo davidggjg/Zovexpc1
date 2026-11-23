@@ -141,7 +141,11 @@ export function buildCatalog(items: MediaItem[]): CatalogModel {
   // Categories, counted from the data itself.
   const catMap = new Map<string, CategoryInfo>();
   const bump = (name: string | null, field: 'movies' | 'series' | 'live', poster: string | null) => {
-    const key = name ?? 'ללא קטגוריה';
+    // Items the server sends without a category are simply not counted into
+    // one — inventing a bucket for them would put a category in the menu that
+    // does not exist in the data.
+    if (!name) return;
+    const key = name;
     let info = catMap.get(key);
     if (!info) {
       info = { name: key, total: 0, movies: 0, series: 0, live: 0, poster: null };

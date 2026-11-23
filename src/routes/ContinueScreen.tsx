@@ -10,6 +10,7 @@ import { PosterCard } from '@/components/media/PosterCard';
 import { Button, Segmented } from '@/components/ui/primitives';
 import { ConfirmDialog, EmptyState } from '@/components/ui/feedback';
 import { PageHeader } from './parts';
+import { SignInGate, useSignIn } from '@/components/shell/SignInGate';
 import { episodeLabel } from '@/lib/catalog';
 import { formatDuration, timeAgo } from '@/lib/format';
 
@@ -26,9 +27,12 @@ export default function ContinueScreen() {
   const [serverHistory, setServerHistory] = useState<HistoryEntry[] | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
 
+  const { signedIn } = useSignIn();
+
   useEffect(() => {
+    if (!signedIn) { setServerHistory([]); return; }
     void window.zovex.playback.history().then(setServerHistory).catch(() => setServerHistory([]));
-  }, []);
+  }, [signedIn]);
 
   const unfinished = useMemo(() => {
     return Object.entries(progress)
@@ -50,6 +54,18 @@ export default function ContinueScreen() {
   }, [serverHistory, model.byId]);
 
   const open = (item: MediaItem | null, id: string) => navigate(item ? `/watch/${item.id}` : `/title/${id}`);
+
+  if (!signedIn) {
+    return (
+      <div className="page page-enter">
+        <PageHeader title="המשך צפייה" />
+        <SignInGate
+          title="התחבר כדי לשמור איפה עצרת"
+          text="ההמשך צפייה וההיסטוריה נשמרים בשרת לפי החשבון שלך, כך שהם זמינים בכל מחשב שתתחבר בו. בלי חשבון אין למה לקשר אותם."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="page page-enter">
