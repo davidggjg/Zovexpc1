@@ -62,6 +62,7 @@ export default function SettingsScreen() {
   const [cacheSize, setCacheSize] = useState(0);
   const [serverDraft, setServerDraft] = useState('');
   const [clientDraft, setClientDraft] = useState('');
+  const [secretDraft, setSecretDraft] = useState('');
   const [signingIn, setSigningIn] = useState(false);
   const [pinging, setPinging] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -83,6 +84,7 @@ export default function SettingsScreen() {
     if (!settings) return;
     setServerDraft(settings.serverUrl);
     setClientDraft(settings.googleClientId);
+    setSecretDraft(settings.googleClientSecret);
   }, [settings]);
 
   if (!settings) return null;
@@ -135,13 +137,26 @@ export default function SettingsScreen() {
             <div className="account-card__text">
               <div className="account-card__name">{auth.profile?.name || 'צפייה ללא חשבון'}</div>
               <div className="account-card__mail">
-                {auth.profile?.email || 'כל התכונות עובדות גם בלי התחברות — הנתונים נשמרים במחשב הזה בלבד'}
+                {auth.profile?.email
+                  ?? (settings.googleClientSecret.trim()
+                    ? 'כל התכונות עובדות גם בלי התחברות — הנתונים נשמרים במחשב הזה בלבד'
+                    : 'כדי להתחבר, מלא Google Client Secret בקטע "שרת" למטה')}
               </div>
             </div>
             {auth.profile ? (
               <Button variant="secondary" icon={<LogOut size={15} />} onClick={() => void signOut()}>התנתק</Button>
             ) : (
-              <Button variant="primary" onClick={() => void signIn()} loading={signingIn} disabled={!settings.googleClientId.trim()}>
+              <Button
+                variant="primary"
+                onClick={() => void signIn()}
+                loading={signingIn}
+                disabled={!settings.googleClientId.trim() || !settings.googleClientSecret.trim()}
+                title={
+                  !settings.googleClientSecret.trim()
+                    ? 'חסר Google Client Secret — מלא אותו בקטע "שרת" למטה'
+                    : undefined
+                }
+              >
                 התחבר עם Google
               </Button>
             )}
@@ -279,7 +294,7 @@ export default function SettingsScreen() {
 
           <Row
             label="Google Client ID"
-            hint="מזהה ציבורי של אפליקציית Desktop ב-Google Cloud. נדרש רק להתחברות עם Google."
+            hint="מזהה ציבורי של לקוח Desktop ב-Google Cloud. נדרש רק להתחברות עם Google."
             stack
           >
             <div style={{ display: 'flex', gap: 'var(--s-3)' }}>
@@ -288,6 +303,30 @@ export default function SettingsScreen() {
                 variant="secondary"
                 disabled={clientDraft === settings.googleClientId}
                 onClick={() => { patch({ googleClientId: clientDraft.trim() }); toast({ title: 'Client ID עודכן', tone: 'success' }); }}
+              >
+                שמור
+              </Button>
+            </div>
+          </Row>
+
+          <Row
+            label="Google Client Secret"
+            hint="גוגל דורשת אותו גם בלקוח Desktop, אחרת ההתחברות נדחית. נשמר רק במחשב הזה, בקובץ ההגדרות שלך — הוא לא נכלל בקוד ולא בקובץ ההתקנה."
+            stack
+          >
+            <div style={{ display: 'flex', gap: 'var(--s-3)' }}>
+              <TextInput
+                type="password"
+                value={secretDraft}
+                onChange={(e) => setSecretDraft(e.target.value)}
+                placeholder={settings.googleClientSecret ? '•••••••••• (שמור)' : 'GOCSPX-…'}
+                dir="ltr"
+                style={{ flex: 1 }}
+              />
+              <Button
+                variant="secondary"
+                disabled={secretDraft === settings.googleClientSecret}
+                onClick={() => { patch({ googleClientSecret: secretDraft.trim() }); toast({ title: 'Client Secret נשמר במחשב הזה', tone: 'success' }); }}
               >
                 שמור
               </Button>

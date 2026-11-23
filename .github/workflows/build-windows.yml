@@ -40,6 +40,9 @@ jobs:
         run: |
           npm run build:renderer
           npm run build:electron
+        env:
+          ZOVEX_GOOGLE_CLIENT_ID: ${{ secrets.ZOVEX_GOOGLE_CLIENT_ID }}
+          ZOVEX_GOOGLE_CLIENT_SECRET: ${{ secrets.ZOVEX_GOOGLE_CLIENT_SECRET }}
 
       - name: Package Windows installer
         run: npx electron-builder --win --publish never

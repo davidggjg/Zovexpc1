@@ -17,7 +17,12 @@ const common = {
   sourcemap: dev,
   minify: !dev,
   external: ['electron'],
-  define: { 'process.env.NODE_ENV': JSON.stringify(dev ? 'development' : 'production') },
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(dev ? 'development' : 'production'),
+    // Baked in from the build environment; empty when not configured.
+    'process.env.ZOVEX_GOOGLE_CLIENT_ID': JSON.stringify(process.env.ZOVEX_GOOGLE_CLIENT_ID ?? ''),
+    'process.env.ZOVEX_GOOGLE_CLIENT_SECRET': JSON.stringify(process.env.ZOVEX_GOOGLE_CLIENT_SECRET ?? ''),
+  },
   logLevel: 'info',
 };
 

@@ -58,6 +58,13 @@ export type ThemeMode = 'dark' | 'light' | 'system';
 export interface Settings {
   serverUrl: string;
   googleClientId: string;
+  /**
+   * Google rejects the token exchange for an installed-app client without
+   * this, PKCE notwithstanding. It is stored only in the user's local
+   * settings file on their own machine — never in the repository, the
+   * renderer bundle or the installer.
+   */
+  googleClientSecret: string;
   theme: ThemeMode;
   accentHue: number;
   reduceMotion: boolean;

@@ -115,7 +115,6 @@ function createWindow(): void {
     },
   });
 
-  if (b.maximized) mainWindow.maximize();
 
   if (DEV) void mainWindow.loadURL(DEV_URL);
   else void mainWindow.loadFile(path.join(ROOT, 'dist/index.html'));
@@ -123,7 +122,12 @@ function createWindow(): void {
   // The renderer asks to be shown once its first screen is painted, so the
   // user never sees an empty frame. This is the safety net if that never comes.
   const failsafe = setTimeout(() => revealWindow(), 12000);
+  mainWindow.webContents.on('did-finish-load', () => {
+    // Last resort: whatever the renderer does next, the splash goes away.
+    setTimeout(() => revealWindow(), 8000);
+  });
   mainWindow.once('ready-to-show', () => {
+    if (b.maximized) mainWindow?.maximize();
     if (!getSettings().showSplash) revealWindow();
   });
   mainWindow.on('closed', () => { clearTimeout(failsafe); mainWindow = null; });
@@ -197,7 +201,7 @@ function runSmokeTest(target: string): void {
         const rows = await win.webContents.executeJavaScript(`document.querySelectorAll('.row').length`);
         const image = await win.webContents.capturePage();
         fs.writeFileSync(target, image.toPNG());
-        console.log(`[smoke] heading=${String(title).trim().slice(0, 60)} cards=${cards} rows=${rows}`);
+        console.log(`[smoke] splashOpen=${Boolean(splashWindow && !splashWindow.isDestroyed())} heading=${String(title).trim().slice(0, 60)} cards=${cards} rows=${rows}`);
         if (problems.length) console.log(`[smoke] console problems:\n- ${problems.slice(0, 10).join('\n- ')}`);
         console.log(`[smoke] screenshot: ${target}`);
         quitting = true;
@@ -212,9 +216,12 @@ function runSmokeTest(target: string): void {
 }
 
 function revealWindow(): void {
-  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+  // Close the splash unconditionally and first. maximize() on a show:false
+  // window already marks it visible, so an isVisible() guard here would leave
+  // the splash on screen forever.
   closeSplash();
-  mainWindow.show();
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!mainWindow.isVisible()) mainWindow.show();
   mainWindow.focus();
 }
 

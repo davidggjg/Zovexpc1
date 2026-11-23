@@ -46,6 +46,7 @@ export function cancelSignIn(): void {
 
 export async function signInWithGoogle(parent: BrowserWindow | null): Promise<AuthResult> {
   const clientId = getSettings().googleClientId.trim();
+  const clientSecret = (getSettings().googleClientSecret ?? '').trim();
   if (!clientId) return { ok: false, error: 'לא הוגדר Client ID של Google בהגדרות' };
   cancelSignIn();
 
@@ -89,8 +90,13 @@ export async function signInWithGoogle(parent: BrowserWindow | null): Promise<Au
         return;
       }
 
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-        .end(page('ההתחברות הושלמה', 'אפשר לסגור את החלון הזה ולחזור ל-ZOVEX.', '#4ade80'));
+      // The browser is answered only after the exchange succeeds, so the page
+      // never claims success for a sign-in that actually failed.
+      const fail = (message: string) => {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+          .end(page('ההתחברות נכשלה', message, '#ff5a68'));
+        finish({ ok: false, error: message });
+      };
 
       try {
         const addr = server.address();
@@ -100,6 +106,7 @@ export async function signInWithGoogle(parent: BrowserWindow | null): Promise<Au
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: new URLSearchParams({
             client_id: clientId,
+            ...(clientSecret ? { client_secret: clientSecret } : {}),
             code,
             code_verifier: verifier,
             grant_type: 'authorization_code',
@@ -107,17 +114,21 @@ export async function signInWithGoogle(parent: BrowserWindow | null): Promise<Au
           }),
         });
         if (!tokenRes.ok) {
-          finish({ ok: false, error: `החלפת הקוד נכשלה (${tokenRes.status})` });
+          const detail = (await tokenRes.json().catch(() => ({}))) as { error_description?: string; error?: string };
+          const why = detail.error_description || detail.error || String(tokenRes.status);
+          fail(why.includes('client_secret')
+            ? 'חסר Client Secret. הוסף אותו בהגדרות ← שרת ← Google Client Secret ונסה שוב.'
+            : `Google דחתה את ההתחברות: ${why}`);
           return;
         }
         const tokens = (await tokenRes.json()) as { access_token?: string };
         if (!tokens.access_token) {
-          finish({ ok: false, error: 'לא התקבל אסימון גישה' });
+          fail('Google לא החזירה אסימון גישה');
           return;
         }
         const infoRes = await fetch(USERINFO_URI, { headers: { Authorization: `Bearer ${tokens.access_token}` } });
         if (!infoRes.ok) {
-          finish({ ok: false, error: `קריאת הפרופיל נכשלה (${infoRes.status})` });
+          fail(`קריאת הפרופיל מ-Google נכשלה (${infoRes.status})`);
           return;
         }
         const info = (await infoRes.json()) as Record<string, string>;
@@ -131,9 +142,11 @@ export async function signInWithGoogle(parent: BrowserWindow | null): Promise<Au
         // verify Google tokens, so keeping one on disk would be a liability
         // with no benefit.
         setAuth({ profile, signedInAt: Date.now() });
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+          .end(page('ההתחברות הושלמה', 'אפשר לסגור את החלון הזה ולחזור ל-ZOVEX.', '#4ade80'));
         finish({ ok: true, profile });
       } catch (e) {
-        finish({ ok: false, error: e instanceof Error ? e.message : 'שגיאת רשת בהתחברות' });
+        fail(e instanceof Error ? e.message : 'שגיאת רשת בהתחברות');
       }
     });
 

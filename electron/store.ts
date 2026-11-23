@@ -34,9 +34,19 @@ function writeJson(file: string, value: unknown): void {
   }
 }
 
+/**
+ * Google OAuth client, injected at build time from repository secrets so the
+ * published installer works out of the box without the values living in a
+ * public repository. When they are absent the app still runs; sign-in then
+ * asks for them in Settings.
+ */
+const BUILD_GOOGLE_CLIENT_ID = process.env.ZOVEX_GOOGLE_CLIENT_ID ?? '';
+const BUILD_GOOGLE_CLIENT_SECRET = process.env.ZOVEX_GOOGLE_CLIENT_SECRET ?? '';
+
 export const DEFAULT_SETTINGS: Settings = {
   serverUrl: 'https://zovex.duckdns.org',
-  googleClientId: '1095467813314-0gc3vhft8c8coip08d7e2fkt4vma1gsn.apps.googleusercontent.com',
+  googleClientId: BUILD_GOOGLE_CLIENT_ID,
+  googleClientSecret: BUILD_GOOGLE_CLIENT_SECRET,
   theme: 'dark',
   accentHue: 354,
   reduceMotion: false,
@@ -64,6 +74,11 @@ export function loadStore(): void {
     settings.deviceId = `u_${crypto.randomBytes(9).toString('base64url')}${Date.now().toString(36)}`;
     writeJson('settings.json', settings);
   }
+  // A build that now carries OAuth values should fill in what an older
+  // install saved as empty, without overwriting anything the user typed.
+  if (!settings.googleClientId && BUILD_GOOGLE_CLIENT_ID) settings.googleClientId = BUILD_GOOGLE_CLIENT_ID;
+  if (!settings.googleClientSecret && BUILD_GOOGLE_CLIENT_SECRET) settings.googleClientSecret = BUILD_GOOGLE_CLIENT_SECRET;
+
   auth = readJson<AuthState>('auth.json', { profile: null, signedInAt: null });
 }
 
