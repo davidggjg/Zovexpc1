@@ -181,6 +181,12 @@ function runSmokeTest(target: string): void {
   win.webContents.on('did-fail-load', (_e, code, desc) => problems.push(`load failed ${code}: ${desc}`));
 
   const wait = Number(process.env.ZOVEX_SMOKE_WAIT ?? 25000);
+  const route = process.env.ZOVEX_SMOKE_ROUTE;
+  if (route) {
+    setTimeout(() => {
+      void win.webContents.executeJavaScript(`location.hash = ${JSON.stringify(`#${route}`)}`);
+    }, Math.max(1000, wait - 6000));
+  }
   setTimeout(() => {
     void (async () => {
       try {
