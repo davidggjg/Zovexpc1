@@ -1,0 +1,182 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   ZOVEX Design System — tokens
+   One source of truth for colour, type, spacing, radius, elevation, motion.
+   Components never hard-code a value that belongs here.
+   ────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Accent (hue is user-adjustable; everything else derives from it) */
+  --accent-h: 354;
+  --accent: hsl(var(--accent-h) 88% 48%);
+  --accent-hover: hsl(var(--accent-h) 92% 56%);
+  --accent-active: hsl(var(--accent-h) 88% 42%);
+  --accent-soft: hsl(var(--accent-h) 88% 48% / 0.14);
+  --accent-softer: hsl(var(--accent-h) 88% 48% / 0.07);
+  --accent-ring: hsl(var(--accent-h) 90% 58% / 0.45);
+  --on-accent: #ffffff;
+
+  /* Status */
+  --success: #2fbf71;
+  --success-soft: rgba(47, 191, 113, 0.14);
+  --warning: #e0a528;
+  --warning-soft: rgba(224, 165, 40, 0.14);
+  --danger: #e5484d;
+  --danger-soft: rgba(229, 72, 77, 0.14);
+  --info: #4a8cff;
+  --info-soft: rgba(74, 140, 255, 0.14);
+
+  /* Type scale */
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", "Noto Sans Hebrew", "Rubik",
+    system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", "Noto Sans Hebrew", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", ui-monospace, monospace;
+
+  --fs-2xs: 10.5px;
+  --fs-xs: 11.5px;
+  --fs-sm: 12.5px;
+  --fs-base: 13.5px;
+  --fs-md: 15px;
+  --fs-lg: 17px;
+  --fs-xl: 21px;
+  --fs-2xl: 26px;
+  --fs-3xl: 34px;
+  --fs-4xl: 44px;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-black: 800;
+
+  --lh-tight: 1.2;
+  --lh-snug: 1.4;
+  --lh-normal: 1.6;
+
+  /* Spacing — 4px base */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px; --s-5: 20px;
+  --s-6: 24px; --s-7: 32px; --s-8: 40px; --s-9: 48px; --s-10: 64px; --s-11: 80px;
+
+  /* Radius */
+  --r-xs: 4px; --r-sm: 6px; --r-md: 9px; --r-lg: 13px; --r-xl: 18px; --r-2xl: 24px;
+  --r-full: 999px;
+
+  /* Layout */
+  --titlebar-h: 38px;
+  --sidebar-w: 236px;
+  --sidebar-w-collapsed: 68px;
+  --content-max: 1680px;
+  --gutter: 32px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 0.72, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.5, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.2, 0.9, 0.25, 1.08);
+  --t-instant: 90ms;
+  --t-fast: 150ms;
+  --t-base: 220ms;
+  --t-slow: 360ms;
+
+  --z-content: 1;
+  --z-sticky: 30;
+  --z-sidebar: 40;
+  --z-titlebar: 60;
+  --z-overlay: 80;
+  --z-modal: 90;
+  --z-toast: 100;
+  --z-player: 110;
+}
+
+/* ── Dark (default) ─────────────────────────────────────────────────────── */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-base: #080a0f;
+  --bg-app: #0b0d12;
+  --bg-surface: #11141b;
+  --bg-surface-2: #161a23;
+  --bg-surface-3: #1c212c;
+  --bg-elevated: #1a1f2a;
+  --bg-input: #141821;
+  --bg-hover: rgba(255, 255, 255, 0.045);
+  --bg-active: rgba(255, 255, 255, 0.08);
+  --bg-selected: hsl(var(--accent-h) 88% 48% / 0.12);
+  --bg-scrim: rgba(5, 6, 10, 0.72);
+  --bg-skeleton: rgba(255, 255, 255, 0.05);
+  --bg-skeleton-shine: rgba(255, 255, 255, 0.10);
+
+  --text-primary: #eef0f5;
+  --text-secondary: #a8b0c0;
+  --text-tertiary: #727b8c;
+  --text-disabled: #4b5261;
+  --text-inverse: #0b0d12;
+
+  --border-subtle: rgba(255, 255, 255, 0.055);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.34);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 32px 80px rgba(0, 0, 0, 0.6);
+  --shadow-accent: 0 10px 30px hsl(var(--accent-h) 88% 40% / 0.32);
+
+  --poster-placeholder: linear-gradient(145deg, #1a1f2a, #11141b);
+}
+
+/* ── Light ──────────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-base: #eceef3;
+  --bg-app: #f5f6f9;
+  --bg-surface: #ffffff;
+  --bg-surface-2: #f7f8fb;
+  --bg-surface-3: #eef0f5;
+  --bg-elevated: #ffffff;
+  --bg-input: #ffffff;
+  --bg-hover: rgba(10, 15, 30, 0.04);
+  --bg-active: rgba(10, 15, 30, 0.075);
+  --bg-selected: hsl(var(--accent-h) 88% 48% / 0.10);
+  --bg-scrim: rgba(18, 22, 32, 0.45);
+  --bg-skeleton: rgba(10, 15, 30, 0.06);
+  --bg-skeleton-shine: rgba(10, 15, 30, 0.03);
+
+  --text-primary: #141822;
+  --text-secondary: #525a6b;
+  --text-tertiary: #7c8597;
+  --text-disabled: #a9b0bd;
+  --text-inverse: #ffffff;
+
+  --border-subtle: rgba(10, 15, 30, 0.07);
+  --border: rgba(10, 15, 30, 0.12);
+  --border-strong: rgba(10, 15, 30, 0.2);
+
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-sm: 0 2px 8px rgba(16, 24, 40, 0.08);
+  --shadow-md: 0 8px 24px rgba(16, 24, 40, 0.10);
+  --shadow-lg: 0 18px 48px rgba(16, 24, 40, 0.14);
+  --shadow-xl: 0 32px 80px rgba(16, 24, 40, 0.18);
+  --shadow-accent: 0 10px 30px hsl(var(--accent-h) 88% 48% / 0.26);
+
+  --poster-placeholder: linear-gradient(145deg, #e7eaf1, #f3f5f9);
+}
+
+/* The player is always dark — a bright chrome around video is unwatchable. */
+[data-surface="cinema"] {
+  color-scheme: dark;
+  --text-primary: #f2f4f8;
+  --text-secondary: #aab2c2;
+  --text-tertiary: #7b8496;
+  --bg-surface: rgba(18, 21, 28, 0.92);
+  --bg-hover: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.1);
+}
+
+[data-reduce-motion="true"] * {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+  scroll-behavior: auto !important;
+}

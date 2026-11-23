@@ -1,0 +1,50 @@
+appId: com.zovex.desktop
+productName: ZOVEX
+copyright: © 2026 ZOVEX
+artifactName: ZOVEX-Setup-${version}.${ext}
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - build/icon.png
+  - build/icon.ico
+  - package.json
+  - '!**/*.map'
+  - '!**/node_modules/**/{test,__tests__,tests,example,examples,docs}/**'
+asar: true
+compression: maximum
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+  artifactName: ZOVEX-Setup-${version}.${ext}
+  publisherName: ZOVEX
+  legalTrademarks: ZOVEX
+  verifyUpdateCodeSignature: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: ZOVEX
+  menuCategory: false
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  installerLanguages:
+    - en_US
+  language: '1033'
+  displayLanguageSelector: false
+portable:
+  artifactName: ZOVEX-Portable-${version}.${ext}
+linux:
+  target: [AppImage]
+  icon: build/icon.png
+  category: AudioVideo
