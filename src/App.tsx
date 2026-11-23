@@ -117,6 +117,13 @@ export default function App() {
     })();
   }, [init, loadLibrary]);
 
+  // A change of identity means a different library on the server.
+  const accountId = useApp((s) => s.settings?.accountId ?? null);
+  useEffect(() => {
+    if (!booted) return;
+    void useLibrary.getState().syncFromServer();
+  }, [accountId, booted]);
+
   useEffect(() => {
     const on = () => setOnline(true);
     const off = () => setOnline(false);

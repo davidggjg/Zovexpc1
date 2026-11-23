@@ -53,8 +53,13 @@ export default function HomeScreen() {
   );
 
   if (status === 'error' && model.all.length === 0) {
+    const authProblem = Boolean(error && /מאומתת|נחסמה/.test(error));
     return (
       <ErrorState
+        title={authProblem ? 'השרת לא מאשר את האפליקציה' : undefined}
+        text={authProblem
+          ? 'שרת ZOVEX מקבל בקשות רק מאפליקציה מאומתת. נסה "התחבר מחדש" בהגדרות ← אימות אפליקציה.'
+          : undefined}
         detail={error ?? undefined}
         onRetry={() => void refresh(true)}
         retrying={refreshing}

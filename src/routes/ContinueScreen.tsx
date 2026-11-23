@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { History, Trash2 } from 'lucide-react';
-import type { HistoryEntry, MediaItem } from '@shared/types';
+import type { MediaItem } from '@shared/types';
 import { useCatalog } from '@/lib/CatalogProvider';
 import { useApp } from '@/store/app';
 import { useLibrary, isFinished } from '@/store/library';
@@ -24,15 +24,16 @@ export default function ContinueScreen() {
   const progress = useLibrary((s) => s.progress);
   const clearAllProgress = useLibrary((s) => s.clearAllProgress);
   const [tab, setTab] = useState<Tab>('continue');
-  const [serverHistory, setServerHistory] = useState<HistoryEntry[] | null>(null);
+  const serverHistory = useLibrary((s) => s.history);
+  const syncing = useLibrary((s) => s.syncing);
+  const syncFromServer = useLibrary((s) => s.syncFromServer);
   const [confirmClear, setConfirmClear] = useState(false);
 
   const { signedIn } = useSignIn();
 
   useEffect(() => {
-    if (!signedIn) { setServerHistory([]); return; }
-    void window.zovex.playback.history().then(setServerHistory).catch(() => setServerHistory([]));
-  }, [signedIn]);
+    if (signedIn) void syncFromServer();
+  }, [signedIn, syncFromServer]);
 
   const unfinished = useMemo(() => {
     return Object.entries(progress)
@@ -42,12 +43,12 @@ export default function ContinueScreen() {
   }, [progress, model.byId]);
 
   const history = useMemo(() => {
-    const rows = (serverHistory ?? []).map((h) => ({
+    const rows = serverHistory.map((h) => ({
       id: h.media_id,
       item: model.byId.get(h.media_id) ?? null,
       title: h.title ?? '',
       thumb: h.thumbnail_url ?? null,
-      when: h.updated_at ?? null,
+      when: h.watched_at ?? h.updated_at ?? null,
     }));
     const seen = new Set<string>();
     return rows.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
@@ -71,7 +72,7 @@ export default function ContinueScreen() {
     <div className="page page-enter">
       <PageHeader
         title="המשך צפייה"
-        subtitle="ממשיך בדיוק מהמקום שעצרת — נשמר במחשב הזה ומסונכרן לשרת"
+        subtitle="ממשיך בדיוק מהמקום שעצרת — נשמר בשרת לפי החשבון שלך"
         tools={
           unfinished.length > 0 && tab === 'continue' ? (
             <Button variant="quiet-danger" size="sm" icon={<Trash2 size={14} />} onClick={() => setConfirmClear(true)}>
@@ -132,12 +133,8 @@ export default function ContinueScreen() {
           empty={
             <EmptyState
               icon={<History size={26} />}
-              title={serverHistory === null ? 'טוען היסטוריה מהשרת…' : 'אין היסטוריית צפייה בשרת'}
-              text={
-                serverHistory === null
-                  ? undefined
-                  : 'ההיסטוריה נשמרת בשרת לפי המזהה של המכשיר. ברגע שתצפה במשהו, הוא יופיע כאן.'
-              }
+              title={syncing ? 'טוען היסטוריה מהשרת…' : 'אין היסטוריית צפייה בשרת'}
+              text={syncing ? undefined : 'ההיסטוריה נשמרת בשרת לפי החשבון שלך. ברגע שתצפה במשהו, הוא יופיע כאן.'}
             />
           }
           renderItem={(row) => (

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { LogIn, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/primitives';
 import { useApp } from '@/store/app';
+import { useLibrary } from '@/store/library';
 
 /**
  * Features that write to the server — watch position, history, support
@@ -21,10 +22,19 @@ export function useSignIn(): { signedIn: boolean; signIn: () => Promise<void>; b
     const result = await window.zovex.auth.signIn();
     setBusy(false);
     if (result.ok && result.profile) {
-      // Identify to the server by the Google account, so the same history
-      // follows the person to any machine they sign in on.
-      await setSettings({ accountId: `g_${result.profile.sub}` });
+      // The website keys a user by the bare Google `sub`; matching it is what
+      // makes the desktop app show the same history as the site.
+      await setSettings({ accountId: result.profile.sub });
       await refreshIdentity();
+      const moved = await window.zovex.auth.migrateAccount();
+      await useLibrary.getState().syncFromServer();
+      if (moved.favorites || moved.history) {
+        toast({
+          title: 'הנתונים הישנים הועברו לחשבון',
+          description: `${moved.favorites} מועדפים ו-${moved.history} פריטי היסטוריה.`,
+          tone: 'success',
+        });
+      }
       toast({
         title: `שלום ${result.profile.name || result.profile.email}`,
         description: 'ההיסטוריה וההמשך צפייה של החשבון נטענים מהשרת.',

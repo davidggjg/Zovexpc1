@@ -6,8 +6,8 @@
  */
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
-  AppVersionInfo, AuthState, CatalogPayload, EpgProgram, GoogleProfile,
-  HistoryEntry, MediaItem, Settings, WindowState,
+  AppVersionInfo, AuthState, AuthStatus, CatalogPayload, EpgProgram, FavoriteEntry,
+  GoogleProfile, HistoryEntry, MediaItem, Settings, WindowState,
 } from '../shared/types';
 
 const api = {
@@ -24,6 +24,11 @@ const api = {
     signIn: (): Promise<{ ok: boolean; profile?: GoogleProfile; error?: string }> => ipcRenderer.invoke('auth:signIn'),
     signOut: (): Promise<boolean> => ipcRenderer.invoke('auth:signOut'),
     cancel: (): Promise<boolean> => ipcRenderer.invoke('auth:cancel'),
+    /** zv-auth application session against the ZOVEX server. */
+    appStatus: (): Promise<AuthStatus> => ipcRenderer.invoke('auth:status'),
+    reauthenticate: (): Promise<boolean> => ipcRenderer.invoke('auth:reauth'),
+    migrateAccount: (): Promise<{ favorites: number; history: number }> =>
+      ipcRenderer.invoke('account:migrate'),
   },
   catalog: {
     cached: (): Promise<CatalogPayload | null> => ipcRenderer.invoke('catalog:cached'),
@@ -42,6 +47,10 @@ const api = {
     saveHistory: (id: string, title: string, thumb: string): Promise<boolean> =>
       ipcRenderer.invoke('history:save', { id, title, thumb }),
     history: (): Promise<HistoryEntry[]> => ipcRenderer.invoke('history:list'),
+    favorites: (): Promise<FavoriteEntry[]> => ipcRenderer.invoke('favorites:list'),
+    addFavorite: (id: string, title: string, thumb: string): Promise<boolean> =>
+      ipcRenderer.invoke('favorites:add', { id, title, thumb }),
+    removeFavorite: (id: string): Promise<boolean> => ipcRenderer.invoke('favorites:remove', id),
     refreshStream: (src: string): Promise<string | null> => ipcRenderer.invoke('stream:refresh', src),
     keepAwake: (on: boolean): Promise<boolean> => ipcRenderer.invoke('power:keepAwake', on),
   },

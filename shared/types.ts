@@ -42,7 +42,24 @@ export interface HistoryEntry {
   thumbnail_url?: string;
   position?: number;
   duration?: number;
+  watched_at?: string;
   updated_at?: string;
+}
+
+export interface FavoriteEntry {
+  media_id: string;
+  title?: string;
+  thumbnail_url?: string;
+  added_at?: string;
+}
+
+export interface AuthStatus {
+  /** The app secret is compiled in and a handshake is possible. */
+  configured: boolean;
+  active: boolean;
+  expiresAt: number | null;
+  /** Set when the server refused this client outright. */
+  blocked: string | null;
 }
 
 export interface AppVersionInfo {
@@ -79,8 +96,13 @@ export interface Settings {
   confirmOnExit: boolean;
   syncHistory: boolean;
   deviceId: string;
-  /** When signed in, history is keyed by the Google account instead of the device. */
+  /**
+   * When signed in this is the Google `sub`, exactly as the website sends it,
+   * so both clients read the same history.
+   */
   accountId: string | null;
+  /** A pre-migration "g_<sub>" id whose data still needs moving across. */
+  legacyAccountId: string | null;
   showSplash: boolean;
 }
 

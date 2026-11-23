@@ -71,6 +71,7 @@ export const DEFAULT_SETTINGS: Settings = {
   syncHistory: true,
   deviceId: '',
   accountId: null,
+  legacyAccountId: null,
   showSplash: true,
 };
 
@@ -79,6 +80,15 @@ let auth: AuthState = { profile: null, signedInAt: null };
 
 export function loadStore(): void {
   settings = readJson<Settings>('settings.json', DEFAULT_SETTINGS);
+  // The web app identifies a Google user by the bare `sub`. An earlier build
+  // here prefixed it with "g_", which gave the same person two separate
+  // histories. Drop the prefix and remember the old id once, so the data
+  // stored under it can be migrated.
+  if (settings.accountId?.startsWith('g_')) {
+    settings.legacyAccountId = settings.accountId;
+    settings.accountId = settings.accountId.slice(2);
+    writeJson('settings.json', settings);
+  }
   if (!settings.deviceId) {
     settings.deviceId = `u_${crypto.randomBytes(9).toString('base64url')}${Date.now().toString(36)}`;
     writeJson('settings.json', settings);

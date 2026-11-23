@@ -6,8 +6,11 @@
  * is fetched once, cached on disk with its ETag, and handed to the renderer as
  * an already-parsed array.
  */
-import type { AppVersionInfo, CatalogPayload, EpgProgram, FetchResult, HistoryEntry, MediaItem } from '../shared/types';
-import { currentUserId, getSettings, readCatalogCache, writeCatalogCache } from './store';
+import type {
+  AppVersionInfo, CatalogPayload, EpgProgram, FavoriteEntry, FetchResult, HistoryEntry, MediaItem,
+} from '../shared/types';
+import { currentUserId, getSettings, patchSettings, readCatalogCache, writeCatalogCache } from './store';
+import { clearSession, ensureSession, needsSignature, setBlocked, signRequest } from './zvauth';
 
 const USER_AGENT = 'ZovexDesktop';
 
@@ -29,12 +32,22 @@ interface RequestOptions {
   headers?: Record<string, string>;
   withUser?: boolean;
   signal?: AbortSignal;
+  /** Internal: set while retrying a request that the server asked us to reauth. */
+  reauthed?: boolean;
 }
 
-/** fetch with timeout, exponential backoff and no secret ever logged. */
+export class BlockedError extends Error {}
+
+/**
+ * fetch with timeout, exponential backoff, zv-auth signing and no secret ever
+ * logged. A 401 carrying {"zv":"reauth"} drops the session and retries once
+ * with a fresh handshake; a 403 {"zv":"blocked"} stops, so a blocked client
+ * never loops against the server.
+ */
 async function request(path: string, opts: RequestOptions = {}): Promise<Response> {
   const { method = 'GET', body, timeoutMs = 20000, retries = 2, withUser = false } = opts;
-  const url = path.startsWith('http') ? path : `${base()}${path}`;
+  const absolute = path.startsWith('http');
+  const url = absolute ? path : `${base()}${path}`;
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -51,12 +64,37 @@ async function request(path: string, opts: RequestOptions = {}): Promise<Respons
       if (body !== undefined) headers['Content-Type'] = 'application/json';
       if (withUser) headers['x-user-id'] = currentUserId();
 
+      // The signature covers the exact path that goes on the wire.
+      if (!absolute && needsSignature(path)) {
+        const session = await ensureSession(base());
+        if (session) Object.assign(headers, signRequest(session, method, path));
+      }
+
       const res = await fetch(url, {
         method,
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: ctrl.signal,
       });
+
+      if (res.status === 401 || res.status === 403) {
+        const detail = (await res.clone().json().catch(() => ({}))) as { zv?: string; detail?: string };
+        if (res.status === 403 && detail.zv === 'blocked') {
+          setBlocked(detail.detail ?? 'הגישה מהאפליקציה נחסמה');
+          throw new BlockedError(detail.detail ?? 'הגישה מהאפליקציה נחסמה');
+        }
+        if (res.status === 401 && detail.zv === 'reauth' && !opts.reauthed) {
+          clearSession();
+          const session = await ensureSession(base(), true);
+          if (session) {
+            clearTimeout(timer);
+            opts.signal?.removeEventListener('abort', onAbort);
+            return request(path, { ...opts, reauthed: true, retries: 0 });
+          }
+        }
+        return res;
+      }
+
       // 5xx is worth another try; 4xx is the caller's problem and never retried.
       if (res.status >= 500 && attempt < retries) {
         lastError = new HttpError(res.status, `server error ${res.status}`);
@@ -64,6 +102,7 @@ async function request(path: string, opts: RequestOptions = {}): Promise<Respons
         return res;
       }
     } catch (err) {
+      if (err instanceof BlockedError) throw err;
       lastError = err;
       if (opts.signal?.aborted) throw err;
     } finally {
@@ -140,10 +179,17 @@ export function cachedCatalog(): CatalogPayload | null {
 }
 
 /** Fetches /content/lite, falling back to the disk cache when offline. */
+/** The server allows 120 catalog pulls an hour; a fresh cache is reused. */
+const CATALOG_MIN_AGE_MS = 10 * 60 * 1000;
+
 export function fetchCatalog(force = false): Promise<CatalogPayload> {
   if (inFlight) return inFlight; // de-duplicate concurrent callers
   inFlight = (async (): Promise<CatalogPayload> => {
     const cache = readCatalogCache();
+    if (!force && cache && Date.now() - cache.fetchedAt < CATALOG_MIN_AGE_MS) {
+      inFlight = null;
+      return { items: sanitize(cache.items), fetchedAt: cache.fetchedAt, stale: false };
+    }
     const headers: Record<string, string> = {};
     if (cache?.etag && !force) headers['If-None-Match'] = cache.etag;
     try {
@@ -151,6 +197,8 @@ export function fetchCatalog(force = false): Promise<CatalogPayload> {
       if (res.status === 304 && cache) {
         return { items: sanitize(cache.items), fetchedAt: cache.fetchedAt, stale: false };
       }
+      if (res.status === 401) throw new HttpError(401, 'האפליקציה אינה מאומתת מול שרת ZOVEX');
+      if (res.status === 403) throw new HttpError(403, 'הגישה מהאפליקציה נחסמה על ידי השרת');
       if (!res.ok) throw new HttpError(res.status, `HTTP ${res.status}`);
       const raw = (await res.json()) as unknown[];
       const items = sanitize(raw);
@@ -206,7 +254,7 @@ export async function saveProgress(mediaId: string, position: number, duration: 
 }
 
 export async function loadProgress(mediaId: string): Promise<number> {
-  if (!mediaId || !getSettings().syncHistory) return 0;
+  if (!mediaId) return 0;
   const res = await json<{ position?: number }>(`/api/progress/${encodeURIComponent(mediaId)}`, {
     withUser: true, retries: 1, timeoutMs: 8000,
   });
@@ -224,9 +272,77 @@ export async function saveHistory(mediaId: string, title: string, thumbnailUrl: 
 }
 
 export async function fetchHistory(): Promise<HistoryEntry[]> {
-  if (!getSettings().syncHistory) return [];
   const res = await json<HistoryEntry[]>('/api/history', { withUser: true, retries: 1, timeoutMs: 12000 });
   return Array.isArray(res.data) ? res.data : [];
+}
+
+// ── Favourites (server-side, keyed by x-user-id) ────────────────────────────
+
+export async function fetchFavorites(): Promise<FavoriteEntry[]> {
+  const res = await json<FavoriteEntry[]>('/api/favorites', { withUser: true, retries: 1, timeoutMs: 12000 });
+  return Array.isArray(res.data) ? res.data : [];
+}
+
+export async function addFavorite(entry: FavoriteEntry): Promise<boolean> {
+  const res = await json('/api/favorites', {
+    method: 'POST',
+    body: { media_id: entry.media_id, title: entry.title ?? '', thumbnail_url: entry.thumbnail_url ?? '' },
+    withUser: true, retries: 1, timeoutMs: 10000,
+  });
+  return res.ok;
+}
+
+export async function removeFavorite(mediaId: string): Promise<boolean> {
+  const res = await json(`/api/favorites/${encodeURIComponent(mediaId)}`, {
+    method: 'DELETE', withUser: true, retries: 1, timeoutMs: 10000,
+  });
+  return res.ok;
+}
+
+export { authStatus } from './zvauth';
+
+/**
+ * Moves favourites, history and watch positions from a pre-migration
+ * "g_<sub>" identity onto the bare Google sub the website uses. Runs once:
+ * the legacy id is cleared whether or not anything was found, so a user with
+ * nothing to move is not re-checked on every launch.
+ */
+export async function migrateLegacyAccount(): Promise<{ favorites: number; history: number }> {
+  const legacy = getSettings().legacyAccountId;
+  const current = getSettings().accountId;
+  if (!legacy || !current || legacy === current) return { favorites: 0, history: 0 };
+
+  const asLegacy = { headers: { 'x-user-id': legacy }, retries: 1, timeoutMs: 15000 };
+  let favorites = 0;
+  let history = 0;
+
+  try {
+    const oldFavorites = await json<FavoriteEntry[]>('/api/favorites', asLegacy);
+    for (const fav of oldFavorites.data ?? []) {
+      if (!fav?.media_id) continue;
+      if (await addFavorite(fav)) favorites += 1;
+    }
+
+    const oldHistory = await json<HistoryEntry[]>('/api/history', asLegacy);
+    for (const row of oldHistory.data ?? []) {
+      if (!row?.media_id) continue;
+      const saved = await saveHistory(row.media_id, row.title ?? '', row.thumbnail_url ?? '');
+      if (saved) history += 1;
+      if (typeof row.position === 'number' && typeof row.duration === 'number' && row.duration > 0) {
+        await saveProgress(row.media_id, row.position, row.duration);
+      }
+    }
+  } catch { /* a failed migration must not block sign-in */ }
+
+  patchSettings({ legacyAccountId: null });
+  return { favorites, history };
+}
+
+/** Forces a fresh handshake; used by the diagnostics in Settings. */
+export async function reauthenticate(): Promise<boolean> {
+  clearSession();
+  setBlocked(null);
+  return Boolean(await ensureSession(base(), true));
 }
 
 // ── Misc ────────────────────────────────────────────────────────────────────

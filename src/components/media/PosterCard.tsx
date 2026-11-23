@@ -86,7 +86,7 @@ function PosterCardBase({
             data-on={isFav}
             aria-label={isFav ? 'הסר ממועדפים' : 'הוסף למועדפים'}
             title={isFav ? 'הסר ממועדפים' : 'הוסף למועדפים'}
-            onClick={(e) => { e.stopPropagation(); void toggleFavorite(favoriteId); }}
+            onClick={(e) => { e.stopPropagation(); void toggleFavorite(favoriteId, { title, thumb: imageUrl }); }}
           >
             <Heart size={15} fill={isFav ? 'currentColor' : 'none'} />
           </button>

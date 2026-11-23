@@ -318,6 +318,13 @@ function registerIpc(): void {
   ipcMain.handle('history:save', (_e, p: { id: string; title: string; thumb: string }) =>
     api.saveHistory(p.id, p.title, p.thumb));
   ipcMain.handle('history:list', () => api.fetchHistory());
+  ipcMain.handle('favorites:list', () => api.fetchFavorites());
+  ipcMain.handle('favorites:add', (_e, p: { id: string; title: string; thumb: string }) =>
+    api.addFavorite({ media_id: p.id, title: p.title, thumbnail_url: p.thumb }));
+  ipcMain.handle('favorites:remove', (_e, id: string) => api.removeFavorite(String(id)));
+  ipcMain.handle('auth:status', () => api.authStatus());
+  ipcMain.handle('auth:reauth', () => api.reauthenticate());
+  ipcMain.handle('account:migrate', () => api.migrateLegacyAccount());
   ipcMain.handle('stream:refresh', (_e, src: string) => api.refreshStream(String(src)));
 
   // Misc server

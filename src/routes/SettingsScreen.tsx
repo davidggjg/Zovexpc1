@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
-  Activity, CircleUser, Database, Info, Keyboard, LogOut, MonitorCog, Palette, PlayCircle, Server, Trash2,
+  Activity, CircleUser, Database, Info, Keyboard, LogOut, MonitorCog, Palette, PlayCircle,
+  Server, ShieldCheck, Trash2,
 } from 'lucide-react';
-import type { Settings } from '@shared/types';
+import type { AuthStatus, Settings } from '@shared/types';
 import { useApp } from '@/store/app';
 import { useCatalog } from '@/lib/CatalogProvider';
 import { Button, Select, Slider, Switch, TextInput } from '@/components/ui/primitives';
@@ -63,6 +64,8 @@ export default function SettingsScreen() {
   const [info, setInfo] = useState<Awaited<ReturnType<typeof window.zovex.app.info>> | null>(null);
   const [serverVersion, setServerVersion] = useState<string | null>(null);
   const [cacheSize, setCacheSize] = useState(0);
+  const [appAuth, setAppAuth] = useState<AuthStatus | null>(null);
+  const [reauthing, setReauthing] = useState(false);
   const [serverDraft, setServerDraft] = useState('');
   const [clientDraft, setClientDraft] = useState('');
   const [secretDraft, setSecretDraft] = useState('');
@@ -72,14 +75,16 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     void (async () => {
-      const [i, size, version] = await Promise.all([
+      const [i, size, version, auth] = await Promise.all([
         window.zovex.app.info(),
         window.zovex.catalog.cacheSize(),
         window.zovex.server.version(),
+        window.zovex.auth.appStatus(),
       ]);
       setInfo(i);
       setCacheSize(size);
       setServerVersion(version?.latest ?? null);
+      setAppAuth(auth);
     })();
   }, []);
 
@@ -324,6 +329,45 @@ export default function SettingsScreen() {
                 שמור
               </Button>
             </div>
+          </Row>
+        </Group>
+
+        {/* ── Application authentication ──────────────────────────── */}
+        <Group icon={<ShieldCheck size={18} />} title="אימות אפליקציה" desc="השרת מקבל בקשות רק מאפליקציה מאומתת (zv-auth v1)">
+          <Row
+            label={
+              appAuth === null ? 'בודק…'
+                : appAuth.blocked ? 'הגישה נחסמה על ידי השרת'
+                : appAuth.active ? 'מחובר לשרת'
+                : appAuth.configured ? 'לא מחובר כרגע'
+                : 'האפליקציה לא הוגדרה עם סוד יישום'
+            }
+            hint={
+              appAuth?.blocked
+                ? appAuth.blocked
+                : appAuth?.expiresAt
+                  ? `הסשן בתוקף עד ${new Date(appAuth.expiresAt).toLocaleString('he-IL')}`
+                  : 'הסשן מתחדש אוטומטית כל 24 שעות.'
+            }
+          >
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={reauthing}
+              onClick={async () => {
+                setReauthing(true);
+                const ok = await window.zovex.auth.reauthenticate();
+                setAppAuth(await window.zovex.auth.appStatus());
+                setReauthing(false);
+                toast({
+                  title: ok ? 'האפליקציה אומתה מול השרת' : 'האימות נכשל',
+                  tone: ok ? 'success' : 'danger',
+                });
+                if (ok) await refresh(true);
+              }}
+            >
+              התחבר מחדש
+            </Button>
           </Row>
         </Group>
 
