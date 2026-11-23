@@ -23,12 +23,14 @@ import path from 'node:path';
  * not make the binary secret-proof, and nothing in the protocol depends on
  * that being true.
  */
-const SECRET_PARTS: readonly string[] = [
-  process.env.ZOVEX_APP_SECRET ?? '',
-];
+declare const __ZV_APP_SECRET_PARTS__: string[];
 
+/** Undoes the build-time masking; see maskSecret in scripts/build-electron.mjs. */
 function appSecret(): string {
-  return SECRET_PARTS.join('');
+  const parts = typeof __ZV_APP_SECRET_PARTS__ === 'undefined' ? [] : __ZV_APP_SECRET_PARTS__;
+  if (!parts.length) return process.env.ZOVEX_APP_SECRET ?? '';
+  const masked = Buffer.from(parts.join(''), 'base64').toString('binary');
+  return [...masked].map((ch, i) => String.fromCharCode(ch.charCodeAt(0) ^ (0x5a + (i % 7)))).join('');
 }
 
 export function hasAppSecret(): boolean {

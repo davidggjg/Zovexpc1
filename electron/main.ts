@@ -199,6 +199,19 @@ function runSmokeTest(target: string): void {
         );
         const cards = await win.webContents.executeJavaScript(`document.querySelectorAll('.card').length`);
         const rows = await win.webContents.executeJavaScript(`document.querySelectorAll('.row').length`);
+        if (process.env.ZOVEX_SMOKE_SYNC) {
+          // End-to-end check of the server-backed library: add, read back,
+          // remove, and confirm it is gone. Leaves nothing behind.
+          const id = `smoke-${Date.now()}`;
+          const added = await api.addFavorite({ media_id: id, title: 'smoke test', thumbnail_url: '' });
+          const afterAdd = await api.fetchFavorites();
+          const removed = await api.removeFavorite(id);
+          const afterRemove = await api.fetchFavorites();
+          const history = await api.fetchHistory();
+          console.log(`[smoke] favorites add=${added} present=${afterAdd.some((f) => f.media_id === id)}`
+            + ` remove=${removed} gone=${!afterRemove.some((f) => f.media_id === id)}`
+            + ` serverCount=${afterRemove.length} historyCount=${history.length}`);
+        }
         const image = await win.webContents.capturePage();
         fs.writeFileSync(target, image.toPNG());
         console.log(`[smoke] splashOpen=${Boolean(splashWindow && !splashWindow.isDestroyed())} heading=${String(title).trim().slice(0, 60)} cards=${cards} rows=${rows}`);

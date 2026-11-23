@@ -8,6 +8,15 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const watch = process.argv.includes('--watch');
 const dev = process.argv.includes('--dev');
 
+/** XOR each byte with a rotating pad, then emit 8-character chunks. */
+function maskSecret(secret) {
+  if (!secret) return [];
+  const masked = [...secret].map((ch, i) =>
+    String.fromCharCode(ch.charCodeAt(0) ^ (0x5a + (i % 7))),
+  ).join('');
+  return Buffer.from(masked, 'binary').toString('base64').match(/.{1,8}/g) ?? [];
+}
+
 /** @type {import('esbuild').BuildOptions} */
 const common = {
   bundle: true,
@@ -22,6 +31,10 @@ const common = {
     // Baked in from the build environment; empty when not configured.
     'process.env.ZOVEX_GOOGLE_CLIENT_ID': JSON.stringify(process.env.ZOVEX_GOOGLE_CLIENT_ID ?? ''),
     'process.env.ZOVEX_GOOGLE_CLIENT_SECRET': JSON.stringify(process.env.ZOVEX_GOOGLE_CLIENT_SECRET ?? ''),
+    // Split and lightly masked at build time so the bundle holds no
+    // contiguous copy of the secret. This raises the cost of lifting it from
+    // the installer; it does not make an installed app able to keep a secret.
+    '__ZV_APP_SECRET_PARTS__': JSON.stringify(maskSecret(process.env.ZOVEX_APP_SECRET ?? '')),
   },
   logLevel: 'info',
 };

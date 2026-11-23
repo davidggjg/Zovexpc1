@@ -42,6 +42,7 @@ jobs:
           # Reports presence only — the values themselves are never printed.
           echo "client id configured:     ${{ secrets.ZOVEX_GOOGLE_CLIENT_ID != '' }}"
           echo "client secret configured: ${{ secrets.ZOVEX_GOOGLE_CLIENT_SECRET != '' }}"
+          echo "app secret configured:    ${{ secrets.ZOVEX_APP_SECRET != '' }}"
 
       - name: Build renderer and main process
         run: |
@@ -50,6 +51,7 @@ jobs:
         env:
           ZOVEX_GOOGLE_CLIENT_ID: ${{ secrets.ZOVEX_GOOGLE_CLIENT_ID }}
           ZOVEX_GOOGLE_CLIENT_SECRET: ${{ secrets.ZOVEX_GOOGLE_CLIENT_SECRET }}
+          ZOVEX_APP_SECRET: ${{ secrets.ZOVEX_APP_SECRET }}
 
       - name: Package Windows installer
         run: npx electron-builder --win --publish never
