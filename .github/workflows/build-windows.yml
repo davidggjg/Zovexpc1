@@ -36,6 +36,13 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      - name: Check OAuth configuration
+        shell: bash
+        run: |
+          # Reports presence only — the values themselves are never printed.
+          echo "client id configured:     ${{ secrets.ZOVEX_GOOGLE_CLIENT_ID != '' }}"
+          echo "client secret configured: ${{ secrets.ZOVEX_GOOGLE_CLIENT_SECRET != '' }}"
+
       - name: Build renderer and main process
         run: |
           npm run build:renderer
