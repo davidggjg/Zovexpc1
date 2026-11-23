@@ -11,9 +11,8 @@
   "private": true,
   "main": "dist-electron/main.cjs",
   "scripts": {
-    "dev": "concurrently -k -r \"npm:dev:vite\" \"npm:dev:electron\"",
+    "dev": "concurrently -k -r \"npm:dev:vite\" \"npm:dev:watch\" \"npm:dev:app\"",
     "dev:vite": "vite",
-    "dev:electron": "node scripts/build-electron.mjs --watch --dev",
     "build:electron": "node scripts/build-electron.mjs",
     "build:renderer": "vite build",
     "typecheck": "tsc --noEmit",
@@ -21,7 +20,10 @@
     "icons": "node scripts/make-icons.mjs",
     "start": "electron .",
     "dist:win": "npm run build && electron-builder --win --publish never",
-    "pack:dir": "npm run build && electron-builder --dir --publish never"
+    "pack:dir": "npm run build && electron-builder --dir --publish never",
+    "dev:watch": "node scripts/build-electron.mjs --watch --dev",
+    "dev:app": "node scripts/dev-electron.mjs",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "5.59.16",

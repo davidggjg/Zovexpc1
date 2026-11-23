@@ -16,7 +16,9 @@ import {
 } from './store';
 import type { Settings } from '../shared/types';
 
-const DEV = !app.isPackaged;
+// Dev mode is opt-in (npm run dev); otherwise the built renderer is loaded,
+// so running `electron .` on a build behaves exactly like the installed app.
+const DEV = !app.isPackaged && process.env.ZOVEX_DEV === '1';
 const DEV_URL = 'http://localhost:5290';
 const ROOT = path.join(__dirname, '..');
 
@@ -126,9 +128,10 @@ function createWindow(): void {
   });
   mainWindow.on('closed', () => { clearTimeout(failsafe); mainWindow = null; });
 
-  for (const ev of ['resize', 'move', 'maximize', 'unmaximize'] as const) {
-    mainWindow.on(ev, rememberBounds);
-  }
+  mainWindow.on('resize', rememberBounds);
+  mainWindow.on('move', rememberBounds);
+  mainWindow.on('maximize', rememberBounds);
+  mainWindow.on('unmaximize', rememberBounds);
   const notify = () => sendWindowState();
   mainWindow.on('maximize', notify);
   mainWindow.on('unmaximize', notify);
@@ -161,6 +164,45 @@ function createWindow(): void {
     dialog.showErrorBox('ZOVEX', `תהליך התצוגה נסגר (${details.reason}). האפליקציה תיטען מחדש.`);
     mainWindow?.reload();
   });
+}
+
+/**
+ * Headless smoke check used by CI and local verification:
+ * ZOVEX_SMOKE=<png path> boots the app, waits for the first screen, writes a
+ * screenshot and exits non-zero if the renderer reported errors.
+ */
+function runSmokeTest(target: string): void {
+  const win = mainWindow;
+  if (!win) { app.exit(1); return; }
+  const problems: string[] = [];
+  win.webContents.on('console-message', (_e, level, message) => {
+    if (level >= 2) problems.push(message);
+  });
+  win.webContents.on('did-fail-load', (_e, code, desc) => problems.push(`load failed ${code}: ${desc}`));
+
+  const wait = Number(process.env.ZOVEX_SMOKE_WAIT ?? 25000);
+  setTimeout(() => {
+    void (async () => {
+      try {
+        const title = await win.webContents.executeJavaScript(
+          `document.querySelector('.hero__title, .state__title, .page__title')?.textContent ?? '(none)'`,
+        );
+        const cards = await win.webContents.executeJavaScript(`document.querySelectorAll('.card').length`);
+        const rows = await win.webContents.executeJavaScript(`document.querySelectorAll('.row').length`);
+        const image = await win.webContents.capturePage();
+        fs.writeFileSync(target, image.toPNG());
+        console.log(`[smoke] heading=${String(title).trim().slice(0, 60)} cards=${cards} rows=${rows}`);
+        if (problems.length) console.log(`[smoke] console problems:\n- ${problems.slice(0, 10).join('\n- ')}`);
+        console.log(`[smoke] screenshot: ${target}`);
+        quitting = true;
+        app.exit(Number(cards) > 0 ? 0 : 2);
+      } catch (err) {
+        console.error('[smoke] failed:', err);
+        quitting = true;
+        app.exit(3);
+      }
+    })();
+  }, wait);
 }
 
 function revealWindow(): void {
@@ -325,6 +367,7 @@ void app.whenReady().then(() => {
   if (getSettings().showSplash) createSplash();
   createWindow();
   if (getSettings().minimizeToTray) buildTray();
+  if (process.env.ZOVEX_SMOKE) runSmokeTest(process.env.ZOVEX_SMOKE);
 
   globalShortcut.register('CommandOrControl+Shift+I', () => {
     if (DEV) mainWindow?.webContents.toggleDevTools();
