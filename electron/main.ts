@@ -207,6 +207,14 @@ function runSmokeTest(target: string): void {
           const afterAdd = await api.fetchFavorites();
           const removed = await api.removeFavorite(id);
           const afterRemove = await api.fetchFavorites();
+          // Progress round trip: write a position, read it back, restore it.
+          const probeId = '2c8e716f-a762-4aab-ae67-33cf116d7b2d';
+          const before = await api.loadProgress(probeId);
+          await api.saveProgress(probeId, 754, 9000);
+          const readBack = await api.loadProgress(probeId);
+          await api.saveProgress(probeId, before, 9000);
+          console.log(`[smoke] progress write=754 readBack=${readBack} restored=${before}`);
+
           const history = await api.fetchHistory();
           const continueRows = history.filter((h) => !(h.duration && h.position && h.position / h.duration > 0.94));
           const auth = api.authStatus();

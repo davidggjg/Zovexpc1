@@ -35,6 +35,7 @@ export default function WatchScreen() {
   const hideTimer = useRef<number | null>(null);
   const lastSave = useRef(0);
   const seekRef = useRef<HTMLDivElement>(null);
+  const pendingSeek = useRef<number | null>(null);
 
   const [item, setItem] = useState<MediaItem | null>(() => model.byId.get(id) ?? null);
   const [src, setSrc] = useState<string | null>(null);
@@ -54,6 +55,9 @@ export default function WatchScreen() {
   const [hint, setHint] = useState<string | null>(null);
   const [hoverTime, setHoverTime] = useState<{ x: number; t: number } | null>(null);
   const [showNext, setShowNext] = useState(false);
+  const [resumeAt, setResumeAt] = useState(0);
+  const [resumePrompt, setResumePrompt] = useState(false);
+  const [resumeAsked, setResumeAsked] = useState(false);
 
   const origin = serverOrigin();
   const seekStep = settings?.seekStep ?? 10;
@@ -125,25 +129,65 @@ export default function WatchScreen() {
     return () => { video.removeAttribute('src'); video.load(); };
   }, [src, source]);
 
-  /* ── Resume position ─────────────────────────────────────────────────── */
+  /* ── Resume point ────────────────────────────────────────────────────── */
+  // Looked up as soon as the item is known, independently of the media
+  // element: waiting for the player to be ready meant a stream that reports
+  // its duration late, or not at all, silently lost the resume point.
   useEffect(() => {
-    if (!ready || isLive || params.get('restart') === '1' || !settings?.resumePlayback || !signedIn) return;
-    const video = videoRef.current;
-    if (!video) return;
-    let cancelled = false;
+    let alive = true;
+    setResumeAt(0);
+    setResumeAsked(false);
+    if (isLive || params.get('restart') === '1' || !settings?.resumePlayback) return undefined;
     void (async () => {
       const local = progressMap[id]?.position ?? 0;
       const remote = await window.zovex.playback.loadProgress(id).catch(() => 0);
       const start = Math.max(local, remote);
-      if (!cancelled && start > 30 && duration > 0 && start < duration - 60) {
-        video.currentTime = start;
-        flash(`ממשיך מ־${formatDuration(start)}`);
-      }
+      if (alive && start > 30) setResumeAt(start);
     })();
-    return () => { cancelled = true; };
-    // Resume runs once per item, when metadata is first known.
+    return () => { alive = false; };
+    // The lookup belongs to the item, not to every progress-map update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, id]);
+  }, [id, isLive, settings?.resumePlayback]);
+
+  // Ask rather than jump, and ask straight away: a slow stream should not
+  // delay the question, and the answer can be given while it buffers.
+  useEffect(() => {
+    if (resumeAsked || resumeAt <= 30) return undefined;
+    setResumePrompt(true);
+    const timer = window.setTimeout(() => { setResumePrompt(false); setResumeAsked(true); }, 25000);
+    return () => window.clearTimeout(timer);
+  }, [resumeAt, resumeAsked]);
+
+  // A resume point past the end is stale; drop it once the length is known.
+  useEffect(() => {
+    if (resumeAt > 30 && Number.isFinite(duration) && duration > 0 && resumeAt > duration - 30) {
+      setResumeAt(0);
+      setResumePrompt(false);
+    }
+  }, [duration, resumeAt]);
+
+  const acceptResume = useCallback(() => {
+    const video = videoRef.current;
+    setResumePrompt(false);
+    setResumeAsked(true);
+    flash(`ממשיך מ־${formatDuration(resumeAt)}`);
+    // Seeking before the stream has a timeline is ignored, so the jump is
+    // held until metadata arrives.
+    if (!video || video.readyState < 1) {
+      pendingSeek.current = resumeAt;
+      return;
+    }
+    video.currentTime = resumeAt;
+    void video.play().catch(() => {});
+  }, [resumeAt, flash]);
+
+  const declineResume = useCallback(() => {
+    setResumePrompt(false);
+    setResumeAsked(true);
+    pendingSeek.current = null;
+    const video = videoRef.current;
+    if (video && video.readyState >= 1) video.currentTime = 0;
+  }, []);
 
   /* ── Keep the screen awake while playing ─────────────────────────────── */
   useEffect(() => {
@@ -327,7 +371,14 @@ export default function WatchScreen() {
             onWaiting={() => setWaiting(true)}
             onPlaying={() => { setWaiting(false); setError(null); }}
             onCanPlay={() => { setWaiting(false); setReady(true); }}
-            onLoadedMetadata={(e) => { setDuration(e.currentTarget.duration); setReady(true); }}
+            onLoadedMetadata={(e) => {
+              setDuration(e.currentTarget.duration);
+              setReady(true);
+              if (pendingSeek.current !== null) {
+                e.currentTarget.currentTime = pendingSeek.current;
+                pendingSeek.current = null;
+              }
+            }}
             onTimeUpdate={onTimeUpdate}
             onDurationChange={(e) => setDuration(e.currentTarget.duration)}
             onEnded={() => {
@@ -346,7 +397,7 @@ export default function WatchScreen() {
         </div>
       )}
 
-      {source?.kind !== 'embed' && !playing && !waiting && !error && (
+      {source?.kind !== 'embed' && ready && !playing && !waiting && !error && (
         <div className="player__center">
           <button type="button" className="player__bigplay" onClick={togglePlay} aria-label="נגן">
             <Play size={34} fill="currentColor" />
@@ -385,6 +436,25 @@ export default function WatchScreen() {
               )}
               <Button variant="ghost" onClick={leave}>חזור</Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Resume prompt — asked, never assumed */}
+      {resumePrompt && (
+        <div className="next-card next-card--resume">
+          <div className="next-card__label">צפית בזה כבר</div>
+          <div className="next-card__title">להמשיך מ־{formatDuration(resumeAt)}?</div>
+          <div className="next-card__sub">
+            {progressMap[id]?.position && progressMap[id].position >= resumeAt
+              ? 'נשמר במחשב הזה'
+              : 'נשמר בחשבון שלך — ייתכן ממכשיר אחר'}
+          </div>
+          <div className="next-card__actions">
+            <Button size="sm" variant="primary" icon={<Play size={14} fill="currentColor" />} onClick={acceptResume}>
+              המשך
+            </Button>
+            <Button size="sm" variant="ghost" onClick={declineResume}>התחל מהתחלה</Button>
           </div>
         </div>
       )}
