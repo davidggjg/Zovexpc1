@@ -15,6 +15,8 @@ export interface ProgressRecord {
   updatedAt: number;
   title: string;
   thumb: string | null;
+  /** True for a row the server knows about, whatever its stored position. */
+  fromServer?: boolean;
 }
 
 interface LibraryState {
@@ -51,17 +53,32 @@ function prune(progress: Record<string, ProgressRecord>): Record<string, Progres
   return Object.fromEntries(entries);
 }
 
+/** The server sends watched_at as epoch seconds; older rows may be ISO text. */
+export function parseWatchedAt(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value > 1e11 ? value : value * 1000;
+  }
+  if (typeof value === 'string') {
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber) && asNumber > 0) return asNumber > 1e11 ? asNumber : asNumber * 1000;
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return Date.now();
+}
+
 function progressFromHistory(rows: HistoryEntry[]): Record<string, ProgressRecord> {
   const out: Record<string, ProgressRecord> = {};
   for (const row of rows) {
     if (!row?.media_id) continue;
-    const when = row.watched_at ?? row.updated_at;
     out[row.media_id] = {
       position: typeof row.position === 'number' ? row.position : 0,
       duration: typeof row.duration === 'number' ? row.duration : 0,
-      updatedAt: when ? Date.parse(when) || Date.now() : Date.now(),
+      updatedAt: parseWatchedAt(row.watched_at ?? row.updated_at),
       title: row.title ?? '',
       thumb: row.thumbnail_url ?? null,
+      /** This entry is on the server, not only on this machine. */
+      fromServer: true,
     };
   }
   return out;
@@ -117,7 +134,15 @@ export const useLibrary = create<LibraryState>((set, get) => ({
 
       // Server history wins for positions; a local-only entry stays until the
       // server has heard about it.
-      const merged = prune({ ...get().progress, ...progressFromHistory(serverHistory) });
+      const local = get().progress;
+      const fromServer = progressFromHistory(serverHistory);
+      for (const [id, rec] of Object.entries(fromServer)) {
+        const mine = local[id];
+        if (mine && mine.position > rec.position) {
+          fromServer[id] = { ...rec, position: mine.position, duration: rec.duration || mine.duration };
+        }
+      }
+      const merged = prune({ ...local, ...fromServer });
 
       set({ favorites: ids, favoriteDetails: mergedDetails, history: serverHistory, progress: merged });
       await Promise.all([
@@ -195,6 +220,16 @@ export const useLibrary = create<LibraryState>((set, get) => ({
 /** A title counts as "finished" past 94% so it leaves Continue Watching. */
 export function isFinished(rec: ProgressRecord): boolean {
   return rec.duration > 0 && rec.position / rec.duration > 0.94;
+}
+
+/**
+ * Continue Watching holds anything the account has started and not finished.
+ * A server row with position 0 still belongs there: it was watched elsewhere
+ * and the server simply has no resume point for it.
+ */
+export function isContinueWatching(rec: ProgressRecord): boolean {
+  if (isFinished(rec)) return false;
+  return rec.fromServer === true || rec.position > 30;
 }
 
 export function progressPercent(rec: ProgressRecord): number {

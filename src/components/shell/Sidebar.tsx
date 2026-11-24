@@ -9,7 +9,7 @@ import { Logo } from './Logo';
 import { IconButton, Tooltip } from '@/components/ui/primitives';
 import { useCatalog } from '@/lib/CatalogProvider';
 import { useApp } from '@/store/app';
-import { useLibrary } from '@/store/library';
+import { useLibrary, isContinueWatching } from '@/store/library';
 import { initials } from '@/lib/format';
 import './shell.css';
 
@@ -40,7 +40,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
   const progress = useLibrary((s) => s.progress);
 
   const continueCount = useMemo(
-    () => Object.values(progress).filter((r) => r.duration > 0 && r.position / r.duration <= 0.94 && r.position > 30).length,
+    () => Object.values(progress).filter(isContinueWatching).length,
     [progress],
   );
 

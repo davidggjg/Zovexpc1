@@ -276,9 +276,41 @@ export async function saveHistory(mediaId: string, title: string, thumbnailUrl: 
   return res.ok;
 }
 
+/**
+ * History, with the resume points filled in.
+ *
+ * /api/history reports position 0 for a row whose progress was stored
+ * separately, which is the normal case for anything watched on the website or
+ * the phone. The exact position lives behind /api/progress/{id}, so the most
+ * recent rows are enriched from there — otherwise Continue Watching would
+ * only ever show what this machine itself played.
+ */
 export async function fetchHistory(): Promise<HistoryEntry[]> {
   const res = await json<HistoryEntry[]>('/api/history', { withUser: true, retries: 1, timeoutMs: 12000 });
-  return Array.isArray(res.data) ? res.data : [];
+  const rows = Array.isArray(res.data) ? res.data : [];
+  if (!rows.length) return rows;
+
+  const needPosition = rows.filter((r) => r?.media_id && !(r.position && r.position > 0)).slice(0, 20);
+  const positions = await Promise.all(
+    needPosition.map(async (row) => {
+      const detail = await json<{ position?: number; duration?: number }>(
+        `/api/progress/${encodeURIComponent(row.media_id)}`,
+        { withUser: true, retries: 0, timeoutMs: 8000 },
+      );
+      return { id: row.media_id, ...detail.data };
+    }),
+  );
+  const byId = new Map(positions.map((p) => [p.id, p]));
+
+  return rows.map((row) => {
+    const extra = byId.get(row.media_id);
+    if (!extra) return row;
+    return {
+      ...row,
+      position: typeof extra.position === 'number' ? extra.position : row.position,
+      duration: typeof extra.duration === 'number' && extra.duration > 0 ? extra.duration : row.duration,
+    };
+  });
 }
 
 // ── Favourites (server-side, keyed by x-user-id) ────────────────────────────

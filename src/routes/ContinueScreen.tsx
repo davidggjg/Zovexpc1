@@ -4,7 +4,7 @@ import { History, Trash2 } from 'lucide-react';
 import type { MediaItem } from '@shared/types';
 import { useCatalog } from '@/lib/CatalogProvider';
 import { useApp } from '@/store/app';
-import { useLibrary, isFinished } from '@/store/library';
+import { useLibrary, isContinueWatching, parseWatchedAt } from '@/store/library';
 import { MediaGrid } from '@/components/media/MediaGrid';
 import { PosterCard } from '@/components/media/PosterCard';
 import { Button, Segmented } from '@/components/ui/primitives';
@@ -37,7 +37,7 @@ export default function ContinueScreen() {
 
   const unfinished = useMemo(() => {
     return Object.entries(progress)
-      .filter(([, rec]) => rec.position > 30 && !isFinished(rec))
+      .filter(([, rec]) => isContinueWatching(rec))
       .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
       .map(([id, rec]) => ({ id, rec, item: model.byId.get(id) ?? null }));
   }, [progress, model.byId]);
@@ -48,7 +48,7 @@ export default function ContinueScreen() {
       item: model.byId.get(h.media_id) ?? null,
       title: h.title ?? '',
       thumb: h.thumbnail_url ?? null,
-      when: h.watched_at ?? h.updated_at ?? null,
+      when: parseWatchedAt(h.watched_at ?? h.updated_at),
     }));
     const seen = new Set<string>();
     return rows.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
@@ -115,7 +115,9 @@ export default function ContinueScreen() {
               subtitle={
                 item?.series_name
                   ? episodeLabel(item)
-                  : `נעצרת ב־${formatDuration(rec.position)} · ${timeAgo(rec.updatedAt)}`
+                  : rec.position > 0
+                    ? `נעצרת ב־${formatDuration(rec.position)} · ${timeAgo(rec.updatedAt)}`
+                    : timeAgo(rec.updatedAt)
               }
               imageUrl={item?.thumbnail_url ?? rec.thumb}
               favoriteId={item?.id}

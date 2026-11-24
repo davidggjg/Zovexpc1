@@ -208,12 +208,15 @@ function runSmokeTest(target: string): void {
           const removed = await api.removeFavorite(id);
           const afterRemove = await api.fetchFavorites();
           const history = await api.fetchHistory();
+          const continueRows = history.filter((h) => !(h.duration && h.position && h.position / h.duration > 0.94));
           const auth = api.authStatus();
           console.log(`[smoke] auth configured=${auth.configured} active=${auth.active}`
             + ` clockOffsetMs=${auth.clockOffsetMs} lastError=${auth.lastError ?? 'none'}`);
           console.log(`[smoke] favorites add=${added} present=${afterAdd.some((f) => f.media_id === id)}`
             + ` remove=${removed} gone=${!afterRemove.some((f) => f.media_id === id)}`
-            + ` serverCount=${afterRemove.length} historyCount=${history.length}`);
+            + ` serverCount=${afterRemove.length} historyCount=${history.length}`
+            + ` continueRows=${continueRows.length}`
+            + ` sample=${JSON.stringify(history[0] ?? null).slice(0, 160)}`);
         }
         const image = await win.webContents.capturePage();
         fs.writeFileSync(target, image.toPNG());

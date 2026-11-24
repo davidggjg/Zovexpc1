@@ -4,7 +4,7 @@ import { Heart, Info, LogIn, Play, Radio, RefreshCw } from 'lucide-react';
 import type { MediaItem } from '@shared/types';
 import { useCatalog } from '@/lib/CatalogProvider';
 import { useApp } from '@/store/app';
-import { useLibrary, isFinished } from '@/store/library';
+import { useLibrary, isContinueWatching } from '@/store/library';
 import { useSignIn } from '@/components/shell/SignInGate';
 import { MediaRow, RowItem } from '@/components/media/MediaRow';
 import { PosterCard } from '@/components/media/PosterCard';
@@ -35,7 +35,7 @@ export default function HomeScreen() {
   const continueItems = useMemo(() => {
     if (!auth.profile) return [];
     return Object.entries(progress)
-      .filter(([, rec]) => rec.position > 30 && !isFinished(rec))
+      .filter(([, rec]) => isContinueWatching(rec))
       .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
       .map(([id, rec]) => ({ item: model.byId.get(id), rec }))
       .filter((x): x is { item: MediaItem; rec: typeof x.rec } => Boolean(x.item))
